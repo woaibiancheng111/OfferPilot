@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.api import agent, interview, jd, traces
 from app.config import get_settings
@@ -44,6 +45,15 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="OfferPilot API", version="0.1.0", lifespan=lifespan)
+# 前端开发服务器和后端不同源，不加这个浏览器会直接拦掉所有请求。
+# 允许的具体域名来自配置，生产环境别用通配符。
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 app.include_router(agent.router)
 app.include_router(jd.router)
 app.include_router(interview.router)

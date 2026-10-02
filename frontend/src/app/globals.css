@@ -1,0 +1,43 @@
+@import "tailwindcss";
+
+@theme {
+  --color-surface: #0d1117;
+  --color-panel: #161b22;
+  --color-panel-2: #1c2129;
+  --color-line: #30363d;
+  --color-ink: #e6edf3;
+  --color-ink-dim: #8b949e;
+  --color-ink-faint: #6e7681;
+  --color-accent: #4493f8;
+  --color-ok: #3fb950;
+  --color-warn: #d29922;
+  --color-bad: #f85149;
+  --color-agent: #a371f7;
+  --color-llm: #4493f8;
+  --color-tool: #3fb950;
+  --color-custom: #d29922;
+}
+
+html,
+body {
+  background: var(--color-surface);
+  color: var(--color-ink);
+}
+
+body {
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei",
+    sans-serif;
+}
+
+code,
+pre,
+.mono {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* 长 JSON 用横向滚动而不是换行，嵌套结构才看得清 */
+pre.json {
+  white-space: pre-wrap;
+  word-break: break-word;
+}

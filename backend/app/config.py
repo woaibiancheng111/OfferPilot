@@ -36,6 +36,13 @@ class Settings(BaseSettings):
     agent_tool_timeout_s: float = 15.0
     agent_max_tool_result_chars: int = 8000
 
+    # CORS。本地开发前端跑在 3000，后端在 18088
+    # 生产环境把前端的实际域名加进来，不要用通配符带凭证
+    cors_origins: list[str] = [
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+
     # Tracing
     trace_flush_interval_s: float = 1.0
     trace_batch_size: int = 50

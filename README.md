@@ -6,26 +6,38 @@
 
 ## 快速开始
 
-需要 Python 3.12、[uv](https://docs.astral.sh/uv/) 和 Docker。
+需要 Python 3.12、[uv](https://docs.astral.sh/uv/)、Node 20+ 和 Docker。
 
 ```bash
 # 1. 启动 PostgreSQL（端口 55432）和 Redis（端口 56379）
 docker compose up -d
 
-# 2. 安装依赖并建表
+# 2. 后端：安装依赖并建表
 cd backend
 uv sync
-cp .env.example .env        # 填入 ANTHROPIC_API_KEY
+cp .env.example .env        # 填入 ANTHROPIC_API_KEY 或 OPENAI_API_KEY
 uv run alembic upgrade head
 
 # 3. 跑测试（不需要 API key，也不需要数据库）
 uv run pytest
 
-# 4. 启动服务
+# 4. 启动后端
 uv run uvicorn app.main:app --reload --port 18088
 ```
 
-打开 http://localhost:18088/docs 可以看到自动生成的接口文档。
+另开一个终端起前端：
+
+```bash
+cd frontend
+pnpm install
+pnpm dev                    # http://localhost:3000
+```
+
+后端文档在 http://localhost:18088/docs，前端在 http://localhost:3000。
+
+> **开发时不要把 dev server 的日志重定向进 `frontend/` 目录**——Next.js 的文件
+> 监听会盯着那里，日志每写一行就触发一次 HMR，页面反复重挂载，表现为
+> 自动拉数据的页面永远停在「加载中」。日志请写到项目外面。
 
 ## 切换模型
 
@@ -75,6 +87,38 @@ curl localhost:18088/api/traces/<trace_id>
 ```
 
 ## 目录结构
+
+```
+offerpilot/
+├── backend/          # FastAPI：Agent、Trace SDK、评测引擎
+├── frontend/         # Next.js：面试工作台 + Trace 看板
+├── docs/             # 项目方案 v2
+├── docker-compose.yml
+└── README.md
+```
+
+## 前端
+
+`frontend/` 用 Next.js（App Router）+ TypeScript + Tailwind。
+
+```
+frontend/src/
+├── app/
+│   ├── page.tsx                 面试工作台：JD 解析 → 规划 → 一问一答 → 逐轮评估
+│   └── traces/
+│       ├── page.tsx             trace 列表（分页）
+│       └── [id]/TraceView.tsx   span 树 + 瀑布条 + 评估卡片
+├── components/ui.tsx            基础组件
+└── lib/
+    ├── api.ts                   带类型的 API 客户端
+    └── types.ts                 与后端 schema 对应的类型
+```
+
+面试工作台是测试主入口：粘贴 JD → 解析 → 可选填简历 → 开始面试 → 逐轮答题。
+每轮下面显示四维评分和"下一步建议"，点 trace 链接能看到这一轮底下的
+agent / llm / tool 调用树。
+
+## 后端目录
 
 ```
 backend/
