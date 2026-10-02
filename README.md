@@ -2,7 +2,7 @@
 
 求职 Agent + 自研观测评测平台。完整方案见 [`docs/OfferPilot项目方案.md`](docs/OfferPilot项目方案.md)（v2，含修订记录）。
 
-当前进度：**第 2 周进行中**。已完成手写 agent loop、双厂商模型抽象层、Trace SDK、落库前脱敏、prompt 内容 hash 版本号、JD 解析 Agent、Trace 查询 API 和数据库迁移，96 个测试全绿。
+当前进度：**第 2 周完成**。已完成手写 agent loop、双厂商模型抽象层、Trace SDK、落库前脱敏、prompt 内容 hash 版本号、JD 解析 Agent、多 Agent 模拟面试（规划/提问/评估）、Trace 查询 API 和数据库迁移，116 个测试全绿。
 
 ## 快速开始
 
@@ -83,7 +83,12 @@ backend/
 │   │   ├── loop.py          # 手写的 agent loop
 │   │   ├── prompts/         # prompt 模板与内容 hash 版本号
 │   │   ├── jd_parser.py     # JD 解析 Agent（结构化输出 + 失败重试）
-│   │   └── demo.py          # 演示 Agent（计算器 + 时间查询）
+│   │   ├── planner.py       # 规划 Agent → 面试大纲
+│   │   ├── interviewer.py   # 面试官 Agent（纯文本，为 SSE 流式预留）
+│   │   ├── evaluator.py     # 评估 Agent → 多维打分 + 下一步建议
+│   │   └── demo.py          # 演示 Agent（脚手架，用完即删）
+│   ├── services/            # 用例层：开 trace、编排 agent、组装结果
+│   ├── schemas/             # 领域模型（同时是 LLM 结构化输出的契约）
 │   ├── schemas/jd.py        # JDAnalysis：LLM 结构化输出的 Pydantic 模型
 │   ├── llm/
 │   │   ├── base.py          # 与厂商无关的消息格式和 LLMClient 协议
@@ -126,11 +131,24 @@ backend/
 - 导出器上有 `redacted_spans` 计数器，这个数突然上涨说明线上出现了新的敏感字段
 - **已知局限**：正则只能覆盖格式化明确的标识符，家庭住址、公司内部代号这类自由文本匹配不到
 
-**结构化输出**（`app/agents/jd_parser.py` + `ToolRegistry.submit()`）
+**分层**
+- `api/`：HTTP 边界，只做校验入参 → 调用例 → 映射状态码。不含业务逻辑，不碰 tracer
+- `services/`：用例层。开 trace、串 agent、组装结果、收敛业务异常
+- `agents/`：单个 agent 的能力。prompt + loop，不认识 HTTP，不显式开 trace
+- trace 归用例层的理由：它表示"一次业务操作"。放 API 层，CLI 调用就没 trace；放 agent 层，同一个 agent 被两个用例复用会开两条
+
+**多 Agent 模拟面试**（`agents/planner.py` / `interviewer.py` / `evaluator.py` + `services/interview_service.py`）
+- **验收标准是评估结果真的改变下一题**。测试里直接断言"同一条历史，只因为评估不同，面试官收到的 prompt 就不同"——否则三个 agent 只是三次 LLM 调用
+- 评估连续建议留在当前知识点 2 次后强制换题。真实跑出来发现候选人一直接受差时，评估会一直建议加难度，死磕一个点不换
+- 面试官用纯文本不用工具：它要留给 SSE 流式推，工具调用要等参数校验完才结束响应，两者不能共存于一次响应
+- 对话历史从已存轮次重建，不额外维护一份可能不一致的副本
+- 当前每轮 9–11s（评估两次往返 + 提问一次），这是串行基线
+
+**结构化输出**（`ToolRegistry.submit()`）
 - 把 Pydantic 模型直接注册成"提交结果"的工具，模型的 JSON Schema 就是工具的 `input_schema`
 - 参数由 Pydantic 校验，失败时**具体是哪个字段、期望什么、模型实际填了什么**会作为 `is_error` 回给模型
 - 重试机制复用的是 agent loop 已有的错误自修正，没有另写一套
-- 模型用文字回答却没调用提交工具时，外层追问一次；仍不提交才报 `JDParseError`
+- 模型用文字回答却没调用提交工具时，外层追问一次；仍不提交才报错
 - JD 原文用 `<job_description>` 标签包裹，system 里声明标签内是数据不是指令（注入防护）
 
 **模型适配**（`app/llm/`）
@@ -147,12 +165,14 @@ backend/
 - 没有手写版本号这个选项，也就没有"改了 prompt 忘了改版本号"导致前后对比悄悄失效的问题
 - agent span 和它下面的 llm span 都带版本号，回归时能按版本分组
 
-## 下一步（第 2 周）
+## 下一步（第 3 周）
 
 - [x] JD 解析 Agent（结构化输出 + 校验失败自动重试）
-- [ ] 模拟面试核心流程（文字版）
+- [x] 多 Agent 模拟面试（规划 / 面试官 / 评估 + 编排）
+- [ ] 复盘 Agent（异步任务，生成报告 + 更新用户画像）
 - [ ] SSE 流式输出（带事件 id 断线续传）
 - [ ] 前端 Trace 可视化（树形 + 瀑布图）
+- [ ] 部署到已备案的腾讯云服务器 + Nginx
 - [ ] CI：GitHub Actions 跑 pytest + ruff
 
 > ✅ 代码已提交并推送到 GitHub：`woaibiancheng111/OfferPilot`（public）
