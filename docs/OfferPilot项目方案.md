@@ -13,7 +13,7 @@ v1 的骨架（Trace SDK 第 1 天接入、不用 Agent 框架、闭环叙事）
 | # | 改动 | 原因 |
 |---|---|---|
 | 1 | 叙事重心从"求职 Agent"移到"用求职场景当 workload 的观测评测平台" | 求职赛道饱和，差异化 100% 在评测层 |
-| 2 | 备案列为第 1 周启动的异步任务 | 1–3 周行政周期，是唯一能让项目物理停摆的风险 |
+| 2 | 复用已备案的腾讯云服务器，第 3 周直接部署 | 备案这条曾被列为头号进度风险，实际已由现成服务器解决，不必等 |
 | 3 | trace 写入路径强制过 `redact()` | v1 风险表承诺"不把原始简历写进 trace"，但 v1 的代码里只有截断、没有脱敏 |
 | 4 | prompt 版本改为内容 hash，不建 `prompt_versions` 表 | 真问题是版本号手写会漂移，不是缺表 |
 | 5 | 评测集改 tune/holdout **按时间切**，加配对比较与双人标注 kappa | 防"把 judge 调成更喜欢新 prompt" |
@@ -357,16 +357,47 @@ GROUP BY 1, 2 ORDER BY usd DESC;
 
 ## 9. 部署
 
-### 9.1 备案是第 1 周就要启动的异步任务
+### 9.1 复用已有的备案服务器
 
-国内云服务器 + 域名上线，ICP 备案 1–3 周且要提前提交。这是**唯一一条能让项目物理上停摆**的风险，其他都是质量问题。
+手上已有一台完成 ICP 备案的腾讯云服务器，域名和备案都就位，**部署不再有行政流程等待**。这意味着第 3 周"部署上线"是一个纯技术任务，排期上是可控的。
 
-- **第 1 周**：买服务器、提交备案，立刻开始
-- **备案未过时的兜底**：Cloudflare Tunnel 或 frp 直接暴露服务，完全绕开备案。代价是国内访问延迟略高，对 SSE 流式来说可以接受
+上线前要确认的几件事：
 
-### 9.2 资源
+- 服务器能跑 Docker（或改为直接用 systemd 托管 uvicorn + Postgres + Redis）
+- 域名解析到服务器 IP
+- HTTPS 证书（Let's Encrypt 免费，Nginx 自动续期）
+- 防火墙放行 80/443
 
-2 核 4G 足够（Postgres + Redis + uvicorn + Next.js static export）。
+### 9.2 Nginx：SSE 流式的关键配置
+
+这一段是流式能不能用的分水岭，配置错了流式会被缓冲成一次性返回：
+
+```nginx
+location /api/ {
+    proxy_pass http://127.0.0.1:18088;
+    proxy_http_version 1.1;
+    proxy_set_header Connection "";
+
+    # SSE 必需：不缓冲，收到一段就发一段
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_read_timeout 3600s;
+
+    # 兜底：有些反代仍会缓冲，这个响应头能压住
+    add_header X-Accel-Buffering no;
+}
+```
+
+### 9.3 资源与安全
+
+2 核 4G 足够跑 Postgres + Redis + uvicorn + Next.js static export。
+
+生产环境必须收紧的几项（本地开发是敞开的，上线前要改）：
+
+- 数据库不暴露公网，只监听 127.0.0.1
+- `.env` 里 `DATABASE_URL` 换成强密码，文件权限 600
+- 简历数据按 §10 的保留期限定期清理
+- uvicorn 前面挂 Nginx，不直接对外
 
 ---
 
@@ -456,13 +487,13 @@ async def calibrate_judge(dataset_id, rubric_version, judge_model) -> JudgeCalib
 
 ## 12. 修订后的 6 周计划
 
-**两个不可压缩的块**：备案（异步等待，第 1 周启动）、人工标注（第 5 周，纯人力 3 小时，不能和其他工作挤）。
+**唯一不可压缩的块**：人工标注（第 5 周，纯人力 3 小时，不能和其他工作挤）。部署本身没有等待期——服务器和域名已就位。
 
 | 周次 | 目标 | 交付物 | 风险缓冲 |
 |---|---|---|---|
-| **第 1 周** ✅ | 骨架 + agent loop + Trace SDK | 已完成：66 测试全绿 | **备案今天启动** |
-| **第 2 周** | JD 解析 + 面试核心文字版 + `redact()` | 能完成一场面试；trace 树形可查；简历不入库为明文 | 模型路由先按静态配置 |
-| **第 3 周** | 多 Agent + 复盘 + 部署上线 | 线上可访问；Next.js 主页面；SSE 重连 | **备案没过就切 Tunnel** |
+| **第 1 周** ✅ | 骨架 + agent loop + Trace SDK + 脱敏 | 已完成：85 测试全绿，代码已入库 | 无等待项 |
+| **第 2 周** | JD 解析 + 面试核心文字版 | 能完成一场面试；trace 树形可查 | 模型路由先按静态配置 |
+| **第 3 周** | 多 Agent + 复盘 + 部署上线 | 线上可访问；Next.js 主页面；SSE 重连 | 服务器已有，部署只是技术活 |
 | **第 4 周** | 5–10 名同学真实使用 | 真实 trace 数据；沉淀 **30 条**评测集（已按时间标好 split） | 人数不达标：自己跑 5 场 + 找 3 个朋友 |
 | **第 5 周** | judge + **双人标注 + 校准** + 前后对比 | 评测看板；holdout 上的配对检验结果 | kappa 低：改 rubric，不改 judge |
 | **第 6 周** | 成本/延迟优化 + 文档 | README、架构图、技术博客、演示视频 | — |
@@ -498,8 +529,9 @@ async def calibrate_judge(dataset_id, rubric_version, judge_model) -> JudgeCalib
 - 简历隐私怎么保护？用户要删数据怎么办？
 - 怎么防御 prompt 注入？
 
-**上线相关（新增）**
-- 备案踩过坑吗？（→ 讲 Cloudflare Tunnel 兜底方案，这比"顺利上线"有说服力）
+**上线相关**
+- Nginx 上 SSE 配错过什么？（→ `proxy_buffering off`，配错会被缓冲成一次性返回）
+- 生产环境做了哪些收紧？（→ 数据库不暴露公网、强密码、.env 权限 600）
 
 ---
 
@@ -523,7 +555,6 @@ async def calibrate_judge(dataset_id, rubric_version, judge_model) -> JudgeCalib
 
 | 风险 | 应对 |
 |---|---|
-| **ICP 备案超期** | 第 1 周启动；兜底用 Cloudflare Tunnel |
 | **同学不来用** | 第 4 周前先在班级群预约；兜底自己跑 5 场完整面试，真实数据照样有 |
 | **judge 被过拟合** | tune/holdout 按时间切 + 配对检验 + rubric 版本化 |
 | **人工标注质量差** | 只标 30 条但双人标；kappa < 0.6 回去改 rubric 而不是改 judge |
@@ -537,13 +568,11 @@ async def calibrate_judge(dataset_id, rubric_version, judge_model) -> JudgeCalib
 
 ## 16. 下一步
 
-- [ ] **提交 ICP 备案**（有等待期，今天就做）
-- [ ] **把第一批代码提交进 git**（目前仍是零 commit 状态，这是当前最高风险）
-- [x] 把本方案纳入版本控制（`docs/OfferPilot项目方案.md`）
-- [x] 实现 `app/security/redact.py` 并接进 trace 写入路径
-- [x] prompt 加载改为内容 hash 版本号
+- [x] 确认部署用已备案的腾讯云服务器（无等待期）
+- [x] 把第一批代码提交进 git 并推到 GitHub
+- [ ] 在服务器上确认：Docker 可用、域名已解析、80/443 已放行、HTTPS 证书已签发
 - [ ] 核实 ARQ 在 Python 3.12 下的维护状态，决定 worker 库
 - [ ] 加 CI（GitHub Actions 跑 pytest + ruff）
 - [ ] 第 2 周：JD 解析 Agent（结构化输出 + 失败重试）
-- [ ] 第 3 周：SSE 断线重连 + Nginx `proxy_buffering off`
+- [ ] 第 3 周：SSE 流式 + 断线续传 + Nginx 配置
 - [ ] 第 4 周前：在班级群预约第一批试用同学

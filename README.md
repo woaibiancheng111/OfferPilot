@@ -131,5 +131,5 @@ backend/
 - [ ] 前端 Trace 可视化（树形 + 瀑布图）
 - [ ] CI：GitHub Actions 跑 pytest + ruff
 
-> ⚠️ 本仓库目前仍是**零 commit** 状态，动手改代码前先提一次。
-> 另外 ICP 备案有 1–3 周等待期，第 1 周就该启动。
+> ✅ 代码已提交并推送到 GitHub：`woaibiancheng111/OfferPilot`（public）
+> 部署用已备案的腾讯云服务器，第 3 周直接上，无等待期。
