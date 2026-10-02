@@ -54,9 +54,11 @@ v1 的骨架（Trace SDK 第 1 天接入、不用 Agent 框架、闭环叙事）
 | Trace SDK | `app/tracing/` | 完成：contextvars + 装饰器 + 批量导出 |
 | **隐私脱敏** | `app/security/redact.py` | 完成：挂在 `BatchExporter.enqueue`，落库前强制过一遍 |
 | **prompt 版本号** | `app/agents/prompts/` | 完成：内容 hash 自动生成，杜绝手写漂移 |
+| **JD 解析 Agent** | `app/agents/jd_parser.py` | 完成：结构化输出 + 校验失败自动重试 |
+| 工具提交能力 | `ToolRegistry.submit()` | 完成：Pydantic 模型直接生成工具 schema |
 | traces/spans 建表 | Alembic | 完成，4 个索引 |
 | Trace 查询 API | `app/api/traces.py` | 完成（列表 + 树形详情） |
-| 单元测试 | `tests/` | 85 个，全绿 |
+| 单元测试 | `tests/` | 96 个，全绿 |
 
 **已确认可讲的工程细节**（面试时是加分项，不是流水账）：
 
@@ -492,7 +494,7 @@ async def calibrate_judge(dataset_id, rubric_version, judge_model) -> JudgeCalib
 | 周次 | 目标 | 交付物 | 风险缓冲 |
 |---|---|---|---|
 | **第 1 周** ✅ | 骨架 + agent loop + Trace SDK + 脱敏 | 已完成：85 测试全绿，代码已入库 | 无等待项 |
-| **第 2 周** | JD 解析 + 面试核心文字版 | 能完成一场面试；trace 树形可查 | 模型路由先按静态配置 |
+| **第 2 周** | JD 解析 ✅ + 面试核心文字版 | JD 解析已完成；进行中：trace 树形可查 | 模型路由先按静态配置 |
 | **第 3 周** | 多 Agent + 复盘 + 部署上线 | 线上可访问；Next.js 主页面；SSE 重连 | 服务器已有，部署只是技术活 |
 | **第 4 周** | 5–10 名同学真实使用 | 真实 trace 数据；沉淀 **30 条**评测集（已按时间标好 split） | 人数不达标：自己跑 5 场 + 找 3 个朋友 |
 | **第 5 周** | judge + **双人标注 + 校准** + 前后对比 | 评测看板；holdout 上的配对检验结果 | kappa 低：改 rubric，不改 judge |
@@ -573,6 +575,7 @@ async def calibrate_judge(dataset_id, rubric_version, judge_model) -> JudgeCalib
 - [ ] 在服务器上确认：Docker 可用、域名已解析、80/443 已放行、HTTPS 证书已签发
 - [ ] 核实 ARQ 在 Python 3.12 下的维护状态，决定 worker 库
 - [ ] 加 CI（GitHub Actions 跑 pytest + ruff）
-- [ ] 第 2 周：JD 解析 Agent（结构化输出 + 失败重试）
+- [x] JD 解析 Agent（结构化输出 + 校验失败自动重试）
+- [ ] 模拟面试核心流程（文字版）：规划 + 面试官 + 评估
 - [ ] 第 3 周：SSE 流式 + 断线续传 + Nginx 配置
 - [ ] 第 4 周前：在班级群预约第一批试用同学

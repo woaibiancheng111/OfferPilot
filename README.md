@@ -2,7 +2,7 @@
 
 求职 Agent + 自研观测评测平台。完整方案见 [`docs/OfferPilot项目方案.md`](docs/OfferPilot项目方案.md)（v2，含修订记录）。
 
-当前进度：**第 1 周**。已完成手写 agent loop、双厂商模型抽象层、Trace SDK、落库前脱敏、prompt 内容 hash 版本号、Trace 查询 API 和数据库迁移，85 个测试全绿。
+当前进度：**第 2 周进行中**。已完成手写 agent loop、双厂商模型抽象层、Trace SDK、落库前脱敏、prompt 内容 hash 版本号、JD 解析 Agent、Trace 查询 API 和数据库迁移，96 个测试全绿。
 
 ## 快速开始
 
@@ -67,7 +67,9 @@ backend/
 │   ├── agents/
 │   │   ├── loop.py          # 手写的 agent loop
 │   │   ├── prompts/         # prompt 模板与内容 hash 版本号
+│   │   ├── jd_parser.py     # JD 解析 Agent（结构化输出 + 失败重试）
 │   │   └── demo.py          # 演示 Agent（计算器 + 时间查询）
+│   ├── schemas/jd.py        # JDAnalysis：LLM 结构化输出的 Pydantic 模型
 │   ├── llm/
 │   │   ├── base.py          # 与厂商无关的消息格式和 LLMClient 协议
 │   │   ├── errors.py        # 与厂商无关的异常
@@ -110,6 +112,13 @@ backend/
 - 导出器上有 `redacted_spans` 计数器，这个数突然上涨说明线上出现了新的敏感字段
 - **已知局限**：正则只能覆盖格式化明确的标识符，家庭住址、公司内部代号这类自由文本匹配不到
 
+**结构化输出**（`app/agents/jd_parser.py` + `ToolRegistry.submit()`）
+- 把 Pydantic 模型直接注册成"提交结果"的工具，模型的 JSON Schema 就是工具的 `input_schema`
+- 参数由 Pydantic 校验，失败时**具体是哪个字段、期望什么、模型实际填了什么**会作为 `is_error` 回给模型
+- 重试机制复用的是 agent loop 已有的错误自修正，没有另写一套
+- 模型用文字回答却没调用提交工具时，外层追问一次；仍不提交才报 `JDParseError`
+- JD 原文用 `<job_description>` 标签包裹，system 里声明标签内是数据不是指令（注入防护）
+
 **模型适配**（`app/llm/`）
 - 换厂商、换模型只改 `.env` 里的 `LLM_VENDOR` / `LLM_MODEL`，代码不动
 - 业务层只认识 `app/llm/base.py` 里的消息格式和 `LLMClient` 协议，不 import 任何厂商 SDK
@@ -125,7 +134,7 @@ backend/
 
 ## 下一步（第 2 周）
 
-- [ ] JD 解析 Agent（结构化输出）
+- [x] JD 解析 Agent（结构化输出 + 校验失败自动重试）
 - [ ] 模拟面试核心流程（文字版）
 - [ ] SSE 流式输出（带事件 id 断线续传）
 - [ ] 前端 Trace 可视化（树形 + 瀑布图）
