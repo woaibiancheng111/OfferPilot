@@ -43,8 +43,23 @@ LLM_MODEL=claude-opus-5
 ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-接第三方中转站时再补一个 `OPENAI_BASE_URL` 即可。模型的价格表在 `app/llm/pricing.py`，
-换新模型记得同步加价目表——不在表里的模型成本会记为 0 并打一条告警日志。
+接第三方中转站时再补一个 `OPENAI_BASE_URL` 即可。模型名没有白名单，填你实际能调通的那个。
+
+### 第三方中转：阿里云百炼 DashScope（已实测跑通）
+
+百炼提供 OpenAI 兼容端点，qwen 系列直接用上面这套配置，一行代码都不用改：
+
+```bash
+LLM_VENDOR=openai
+LLM_MODEL=qwen-max            # 也可用 qwen-plus / qwen-turbo
+OPENAI_API_KEY=<你的 DASHSCOPE_API_KEY>
+OPENAI_BASE_URL=https://dashscope.aliyuncs.com/compatible-mode/v1
+OPENAI_LEGACY_MAX_TOKENS=false
+LLM_ENABLE_PROMPT_CACHE=false  # 第三方端点一般不支持 prompt_cache_key
+```
+
+已验证：`qwen-max` / `qwen-plus` / `qwen-turbo` 都支持**工具调用**（JD 解析依赖它），
+`max_completion_tokens` 和 `max_tokens` 两种写法都接受。
 
 ## 试一下
 
