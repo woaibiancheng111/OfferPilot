@@ -1,12 +1,17 @@
-"""JD 解析接口。"""
+"""JD 解析接口。
 
-from fastapi import APIRouter, HTTPException, Request
+只做三件事：校验入参 → 调用例 → 返回。业务逻辑和 trace 都在 service 层。
+"""
+
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
-from app.agents.jd_parser import JDParseError, parse_jd
+from app.agents.jd_parser import JDParseError
 from app.api.errors import http_error_for_llm
+from app.deps import LLMDep
 from app.llm.errors import LLMError
-from app.tracing import tracer
+from app.schemas.jd import JDAnalysis
+from app.services.jd_service import parse_jd_text
 
 router = APIRouter(prefix="/api/jd", tags=["jd"])
 
@@ -16,16 +21,14 @@ class ParseJDRequest(BaseModel):
     user_id: str | None = None
 
 
-class ParseJDResponse(BaseModel):
-    company: str | None
-    role_title: str | None
-    seniority: str
-    seniority_reason: str
-    business_domain: str | None
-    skills_required: list[str]
-    skills_nice_to_have: list[str]
-    responsibilities: list[str]
-    keywords: list[str]
+class ParseJDResponse(JDAnalysis):
+    """直接继承领域模型，不手写字段映射。
+
+    继承而不是复制，是为了让 JDAnalysis 改了这里自动跟着变。
+    注意给 ``tools.submit()`` 的仍然是 JDAnalysis 本体——否则模型会被要求
+    填 attempts/trace_id 这些它根本不知道的字段。
+    """
+
     attempts: int = Field(description="为了拿到结构化结果用了几次尝试")
     input_tokens: int
     output_tokens: int
@@ -33,28 +36,18 @@ class ParseJDResponse(BaseModel):
 
 
 @router.post("/parse", response_model=ParseJDResponse)
-async def parse_jd_endpoint(body: ParseJDRequest, request: Request) -> ParseJDResponse:
-    async with tracer.trace("jd.parse", user_id=body.user_id) as trace:
-        try:
-            result = await parse_jd(request.app.state.llm, body.jd_text)
-        except LLMError as e:
-            raise http_error_for_llm(e) from e
-        except JDParseError as e:
-            raise HTTPException(status_code=502, detail=str(e)) from e
+async def parse_jd_endpoint(body: ParseJDRequest, llm: LLMDep) -> ParseJDResponse:
+    try:
+        outcome = await parse_jd_text(llm, body.jd_text, user_id=body.user_id)
+    except LLMError as e:
+        raise http_error_for_llm(e) from e
+    except JDParseError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
-    a = result.analysis
     return ParseJDResponse(
-        company=a.company,
-        role_title=a.role_title,
-        seniority=a.seniority,
-        seniority_reason=a.seniority_reason,
-        business_domain=a.business_domain,
-        skills_required=a.skills_required,
-        skills_nice_to_have=a.skills_nice_to_have,
-        responsibilities=a.responsibilities,
-        keywords=a.keywords,
-        attempts=result.attempts,
-        input_tokens=result.usage.input_tokens,
-        output_tokens=result.usage.output_tokens,
-        trace_id=trace.id,
+        **outcome.analysis.model_dump(),
+        attempts=outcome.attempts,
+        input_tokens=outcome.usage.input_tokens,
+        output_tokens=outcome.usage.output_tokens,
+        trace_id=outcome.trace_id,
     )

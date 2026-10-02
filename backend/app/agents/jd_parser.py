@@ -17,7 +17,6 @@ from app.agents.loop import AgentConfig, run_agent
 from app.llm.base import LLMClient, Usage, UserMessage
 from app.schemas.jd import JDAnalysis
 from app.tools.registry import ToolRegistry
-from app.tracing import tracer
 
 SUBMIT_TOOL = "submit_jd_analysis"
 
@@ -55,7 +54,7 @@ class JDParseResult:
     analysis: JDAnalysis
     attempts: int
     usage: Usage
-    trace_id: str
+    stop_reason: str
     text: str = ""
 
 
@@ -77,46 +76,43 @@ async def parse_jd(
 ) -> JDParseResult:
     """解析 JD，模型没按要求调用提交工具时重试。
 
+    只负责 agent 能力本身：不开 trace、不认识 HTTP。trace 由用例层
+    （``app.services.jd_service``）负责，这样同一个 agent 被别的用例复用时
+    也不会重复开 trace。
+
     :raises JDParseError: 重试后仍未拿到结构化结果
     """
     config = config or JDParseConfig()
     messages = [UserMessage(wrap_jd(jd_text))]
     total_usage = Usage()
 
-    # 外层 span 表示"一次解析任务"，用 custom 区分于 run_agent 内部的 agent 步骤，
-    # 这样瀑布图里能一眼看出任务边界和 agent 边界
-    async with tracer.span("custom", "jd.parse", input={"jd": jd_text}) as span:
-        for attempt in range(1, config.max_attempts + 1):
-            captured: list[JDAnalysis] = []
-            tools = _build_tools(captured)
-            result = await run_agent(
-                llm,
-                messages,
-                system=JD_PARSER_SYSTEM,
-                tools=tools,
-                config=config.agent,
-                name=name,
+    for attempt in range(1, config.max_attempts + 1):
+        captured: list[JDAnalysis] = []
+        tools = _build_tools(captured)
+        result = await run_agent(
+            llm,
+            messages,
+            system=JD_PARSER_SYSTEM,
+            tools=tools,
+            config=config.agent,
+            name=name,
+        )
+        _add_usage(total_usage, result.usage)
+
+        if captured:
+            return JDParseResult(
+                analysis=captured[0],
+                attempts=attempt,
+                usage=total_usage,
+                stop_reason=result.stop_reason,
+                text=result.text,
             )
-            _add_usage(total_usage, result.usage)
 
-            if captured:
-                analysis = captured[0]
-                span.output = {"analysis": analysis.model_dump(), "attempts": attempt}
-                span.attributes.update(attempts=attempt, stop_reason=result.stop_reason)
-                return JDParseResult(
-                    analysis=analysis,
-                    attempts=attempt,
-                    usage=total_usage,
-                    trace_id=span.trace_id,
-                    text=result.text,
-                )
+        # 模型用文字回答了却没调用提交工具。带上历史追问一次，
+        # 让它知道自己漏了什么，而不是从头再来一遍。
+        if attempt < config.max_attempts:
+            messages = [*result.messages, UserMessage(NO_TOOL_NUDGE)]
 
-            # 模型用文字回答了却没调用提交工具。带上历史追问一次，
-            # 让它知道自己漏了什么，而不是从头再来一遍。
-            if attempt < config.max_attempts:
-                messages = [*result.messages, UserMessage(NO_TOOL_NUDGE)]
-
-    span.attributes.update(attempts=config.max_attempts, parse_failed=True)
     raise JDParseError(f"模型在 {config.max_attempts} 次尝试内都没有提交结构化结果")
 
 

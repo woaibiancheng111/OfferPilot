@@ -178,15 +178,6 @@ async def test_raises_after_exhausting_attempts(flush):
         await parse_jd(llm, JD_TEXT)
 
 
-async def test_failure_is_recorded_in_trace(flush):
-    llm = ScriptedLLM([reply(text="a"), reply(text="b")])
-    with pytest.raises(JDParseError):
-        await parse_jd(llm, JD_TEXT)
-
-    [trace] = await flush()
-    assert trace.spans[0].attributes.get("parse_failed") is True
-
-
 # ---------- prompt 注入防护 ----------
 
 
