@@ -52,3 +52,17 @@ class JDAnalysis(BaseModel):
         default_factory=list,
         description="用于后续简历匹配和面试出题的技术关键词，3-8 个",
     )
+
+
+class JDInput(JDAnalysis):
+    """作为接口入参时的 JD。
+
+    客户端拿到 ``/api/jd/parse`` 的响应后，合理的做法是原样传给下一个接口。
+    那份响应里除了 JD 本身还有 attempts / trace_id 等元信息，这里一律忽略，
+    不该逼调用方手工裁字段。
+
+    注意 ``JDAnalysis`` 本身是 ``extra="forbid"``，那是给 LLM 用的——要拦住它
+    编造字段。入参这里放松，不影响工具 schema 的严格性。
+    """
+
+    model_config = ConfigDict(extra="ignore")

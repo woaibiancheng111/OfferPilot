@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app.api import agent, jd, traces
+from app.api import agent, interview, jd, traces
 from app.config import get_settings
 from app.db.session import create_engine, create_session_factory
 from app.db.trace_sink import SqlAlchemyTraceSink
@@ -46,6 +46,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="OfferPilot API", version="0.1.0", lifespan=lifespan)
 app.include_router(agent.router)
 app.include_router(jd.router)
+app.include_router(interview.router)
 app.include_router(traces.router)
 
 
