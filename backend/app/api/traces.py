@@ -24,7 +24,6 @@ class TraceSummary(BaseModel):
     user_id: str | None
     status: str
     total_tokens: int
-    total_cost: float
     latency_ms: int | None
     started_at: datetime
 
@@ -48,7 +47,6 @@ class SpanNode(BaseModel):
     prompt_version: str | None
     input_tokens: int
     output_tokens: int
-    cost: float
     latency_ms: int | None
     error: str | None
     started_at: datetime

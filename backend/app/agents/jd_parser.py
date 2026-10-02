@@ -13,8 +13,8 @@
 
 from dataclasses import dataclass, field
 
-from app.agents.loop import AgentConfig, AgentResult, run_agent
-from app.llm.base import LLMClient, UserMessage
+from app.agents.loop import AgentConfig, run_agent
+from app.llm.base import LLMClient, Usage, UserMessage
 from app.schemas.jd import JDAnalysis
 from app.tools.registry import ToolRegistry
 from app.tracing import tracer
@@ -54,7 +54,7 @@ class JDParseConfig:
 class JDParseResult:
     analysis: JDAnalysis
     attempts: int
-    cost: float
+    usage: Usage
     trace_id: str
     text: str = ""
 
@@ -81,7 +81,7 @@ async def parse_jd(
     """
     config = config or JDParseConfig()
     messages = [UserMessage(wrap_jd(jd_text))]
-    total_cost = 0.0
+    total_usage = Usage()
 
     # 外层 span 表示"一次解析任务"，用 custom 区分于 run_agent 内部的 agent 步骤，
     # 这样瀑布图里能一眼看出任务边界和 agent 边界
@@ -97,7 +97,7 @@ async def parse_jd(
                 config=config.agent,
                 name=name,
             )
-            total_cost += result.cost
+            _add_usage(total_usage, result.usage)
 
             if captured:
                 analysis = captured[0]
@@ -106,7 +106,7 @@ async def parse_jd(
                 return JDParseResult(
                     analysis=analysis,
                     attempts=attempt,
-                    cost=total_cost,
+                    usage=total_usage,
                     trace_id=span.trace_id,
                     text=result.text,
                 )
@@ -135,11 +135,17 @@ def _build_tools(captured: list[JDAnalysis]) -> ToolRegistry:
     return tools
 
 
+def _add_usage(total: Usage, usage: Usage) -> None:
+    total.input_tokens += usage.input_tokens
+    total.output_tokens += usage.output_tokens
+    total.cache_read_tokens += usage.cache_read_tokens
+    total.cache_write_tokens += usage.cache_write_tokens
+
+
 __all__ = [
     "JDParseConfig",
     "JDParseError",
     "JDParseResult",
-    "AgentResult",
     "parse_jd",
     "wrap_jd",
     "JD_PARSER_SYSTEM",

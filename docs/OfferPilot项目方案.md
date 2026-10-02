@@ -17,7 +17,8 @@ v1 的骨架（Trace SDK 第 1 天接入、不用 Agent 框架、闭环叙事）
 | 3 | trace 写入路径强制过 `redact()` | v1 风险表承诺"不把原始简历写进 trace"，但 v1 的代码里只有截断、没有脱敏 |
 | 4 | prompt 版本改为内容 hash，不建 `prompt_versions` 表 | 真问题是版本号手写会漂移，不是缺表 |
 | 5 | 评测集改 tune/holdout **按时间切**，加配对比较与双人标注 kappa | 防"把 judge 调成更喜欢新 prompt" |
-| 6 | 范围收敛：评测集 30 条、真实用户 5–10 人、长期记忆与成本看板移到第 6 周后 | 消除工期零余量 |
+| 6 | 范围收敛：评测集 30 条、真实用户 5–10 人、长期记忆与 token 看板移到第 6 周后 | 消除工期零余量 |
+| 7 | **去掉成本折算，只统计 token** | 可能接第三方中转，模型名和单价不在控制内，价目表只会持续给出错误数字 |
 
 ---
 
@@ -29,7 +30,7 @@ v1 的骨架（Trace SDK 第 1 天接入、不用 Agent 框架、闭环叙事）
 
 ### 1.2 核心叙事（面试主线）
 
-> 我做了一个多 Agent 模拟面试系统，上线后有 X 名同学使用。我发现追问质量不稳定，于是自建了 trace 和评测体系，定位到问题出在 Y 层。改进后在 **holdout 评测集**上，judge 评分从 A 提到 B（配对检验 p<0.05），与两位人工标注者的一致率 kappa 从 C 提升到 D，单场成本降低 E%。
+> 我做了一个多 Agent 模拟面试系统，上线后有 X 名同学使用。我发现追问质量不稳定，于是自建了 trace 和评测体系，定位到问题出在 Y 层。改进后在 **holdout 评测集**上，judge 评分从 A 提到 B（配对检验 p<0.05），与两位人工标注者的一致率 kappa 从 C 提升到 D，单场 token 消耗降低 E%。
 
 两个层次必须讲清楚：
 
@@ -67,7 +68,7 @@ v1 的骨架（Trace SDK 第 1 天接入、不用 Agent 框架、闭环叙事）
 - 达到步数上限后用 `tool_choice="none"` 强制收尾
 - 厂商原始 content blocks 原样回传，保证 thinking 块不丢
 - 批量导出器队列满则丢弃并计数，观测系统绝不拖垮主流程
-- 两家 SDK 的 usage 口径不同（Anthropic 的 `input_tokens` 不含缓存，OpenAI 的 `prompt_tokens` 已含），计价必须分表
+- 两家 SDK 的 usage 口径不同（Anthropic 的 `input_tokens` 不含缓存，OpenAI 的 `prompt_tokens` 已含），已在各自 provider 里归一
 
 ---
 
@@ -83,7 +84,7 @@ v1 的骨架（Trace SDK 第 1 天接入、不用 Agent 框架、闭环叙事）
 | Trace 可视化 | 瀑布图 | P0 | 放第 3 周 |
 | 简历诊断 | 对照 JD 打分 | P1 | **默认砍掉 RAG**，见 §7.4 |
 | 长期记忆 | 跨会话记住薄弱点 | P1 | 移到第 6 周后 |
-| 成本看板 | 按用户/功能/模型聚合 | P1 | 移到第 6 周后 |
+| Token 用量看板 | 按用户/功能/模型聚合 | P1 | 移到第 6 周后 |
 | 语音面试 / 代码题 / 面经检索 | — | P2 | 明确不做 |
 
 ---
@@ -250,7 +251,7 @@ user_skill_profile (
 
 补充：`spans(trace_id, parent_span_id)`（树形查询）、`eval_cases(dataset_id, split)`。
 
-保留策略：`spans` 存 90 天；`traces` 永久；成本按天 rollup 成 `cost_daily`，原始 span 清掉之后看板照常可用。
+保留策略：`spans` 存 90 天；`traces` 永久；token 用量按天 rollup 成 `token_daily`，原始 span 清掉之后看板照常可用。
 
 ### 6.5 其余表（业务 + trace）
 
@@ -275,7 +276,7 @@ span 属性命名对齐 [OpenTelemetry GenAI semantic conventions](https://opent
 v1 给的理由是"prompt 更专注"——这个会被追问穿，单 Agent + 结构化输出 + 分段 prompt 也能做到。真正的收益是：
 
 1. **评估 Agent 是评测闭环的信号源**。拆开才能独立迭代、独立评测，回归时能定位是哪一层退化。
-2. **三个角色可以独立选模型**。这是成本优化的抓手，见 §8.2。
+2. **三个角色可以独立选模型**。这是 token 优化的抓手，见 §8.2。
 3. **prompt 可独立版本化**。改评估逻辑不会污染提问逻辑的对比结果。
 
 ```
@@ -314,24 +315,28 @@ v1 方案完全没提这件事，但它是实打实的体验问题：评估 Agen
 
 ---
 
-## 8. 成本与延迟
+## 8. Token 消耗与延迟
 
-### 8.1 成本必须实测，不能拍脑袋
+### 8.1 只统计 token，不折算金额
 
-v1 只在风险表提了一句"成本失控"。面试时"成本是怎么控制的"需要具体数字。
+**这是一个刻意的取舍。** 项目可能要接第三方中转，模型名和单价都不在我们控制内。
+维护一张价目表意味着：每换一个模型就要更新一次、更新慢了看板给出的是错的、
+而错误的成本数字比没有成本数字更危险——它会让人以为自己在优化。
 
-好消息是 `spans` 表已经存了每次调用的真实 `input_tokens` / `output_tokens` / `cost`，所以**成本可以直接从生产 trace 聚合出来**，不用按厂商价目表估算：
+所以代码里只记 token。token 数是厂商无关、且始终可靠的：
 
 ```sql
--- 单场面试的真实成本构成
-SELECT s.kind, s.model, sum(s.input_tokens) AS in_tok, sum(s.output_tokens) AS out_tok,
-       round(sum(s.cost)::numeric, 4) AS usd
+-- 单场面试的 token 构成
+SELECT s.kind, s.model, count(*) AS calls,
+       sum(s.input_tokens) AS in_tok, sum(s.output_tokens) AS out_tok
 FROM spans s JOIN traces t ON t.id = s.trace_id
 WHERE t.name = 'interview.session' AND t.user_id = :uid
-GROUP BY 1, 2 ORDER BY usd DESC;
+GROUP BY 1, 2 ORDER BY in_tok + out_tok DESC;
 ```
 
-这段 SQL 本身就是面试素材：它同时体现了成本可观测、按 Agent 角色归因、以及用真实数据指导模型路由。
+想换算成钱的时候，乘上你自己的单价即可。**成本优化的本质是"少用 token"，而不是"算准了多少钱"**，前者是我们能控制的。
+
+这段 SQL 本身仍是面试素材：它体现了消耗可观测、按 Agent 角色归因、以及用真实数据指导模型路由。
 
 ### 8.2 模型路由策略（写具体，不写"模型路由"四个字）
 
@@ -345,7 +350,7 @@ GROUP BY 1, 2 ORDER BY usd DESC;
 
 **降级触发条件**（写进配置，可现场调）：单轮评估超过 2s 或输出超过 N tokens → 自动降到便宜模型重跑一次。
 
-路由的收益直接用 §8.1 的 SQL 前后对比，这就是"成本优化"的完整证据链。
+路由的收益直接用 §8.1 的 SQL 前后对比：同一个 agent 角色，优化前后 input token 降了多少。这就是"成本优化"的完整证据链。
 
 ### 8.3 SSE 断线重连
 
@@ -498,11 +503,11 @@ async def calibrate_judge(dataset_id, rubric_version, judge_model) -> JudgeCalib
 | **第 3 周** | 多 Agent + 复盘 + 部署上线 | 线上可访问；Next.js 主页面；SSE 重连 | 服务器已有，部署只是技术活 |
 | **第 4 周** | 5–10 名同学真实使用 | 真实 trace 数据；沉淀 **30 条**评测集（已按时间标好 split） | 人数不达标：自己跑 5 场 + 找 3 个朋友 |
 | **第 5 周** | judge + **双人标注 + 校准** + 前后对比 | 评测看板；holdout 上的配对检验结果 | kappa 低：改 rubric，不改 judge |
-| **第 6 周** | 成本/延迟优化 + 文档 | README、架构图、技术博客、演示视频 | — |
+| **第 6 周** | token/延迟优化 + 文档 | README、架构图、技术博客、演示视频 | — |
 
 **关于用户数**：目标是 **5–10 人，不是 50 人**。数字小但真实，面试时更好讲——50 人的项目你答不出留存率和具体反馈，5 人可以逐个说出他们抱怨了什么、哪次 trace 定位到了什么问题。质量远高于数量。
 
-**砍到第 6 周之后**：长期记忆的成本优化、完整成本看板、Prompt 版本对比的自动化 CI 回归。
+**砍到第 6 周之后**：长期记忆的 token 优化、完整用量看板、Prompt 版本对比的自动化 CI 回归。
 
 ---
 
@@ -527,7 +532,7 @@ async def calibrate_judge(dataset_id, rubric_version, judge_model) -> JudgeCalib
 - 流式输出怎么实现？断线了怎么办？（→ 事件 id + Redis 续传 + `Last-Event-ID`）
 - Nginx 上 SSE 有什么坑？（→ `proxy_buffering off`）
 - Trace 写入会不会拖慢主流程？
-- 成本怎么控制？具体降了多少？（→ 用 spans 表聚合，给优化前后的 SQL 对比）
+- 成本怎么控制？具体降了多少？（→ 用 spans 表聚合 token，给优化前后的 SQL 对比；不报金额，因为接第三方中转单价不可控）
 - 简历隐私怎么保护？用户要删数据怎么办？
 - 怎么防御 prompt 注入？
 
@@ -544,7 +549,7 @@ async def calibrate_judge(dataset_id, rubric_version, judge_model) -> JudgeCalib
 **OfferPilot：Agent 观测与评测平台（求职场景）** | Python / FastAPI / PostgreSQL / Redis / Next.js | [线上地址] | [GitHub]
 
 - 自研 Agent 可观测 SDK（装饰器 + contextvars + 异步批量写库），覆盖 LLM/工具/Agent 全链路 trace，队列满自动降级不影响主流程；据此定位追问质量问题并量化改进效果
-- 设计并实现多 Agent 模拟面试系统（规划/提问/评估/复盘），支持基于简历和 JD 的动态追问；引入跨厂商模型抽象层与按角色模型路由，单场成本降低 **XX%**
+- 设计并实现多 Agent 模拟面试系统（规划/提问/评估/复盘），支持基于简历和 JD 的动态追问；引入跨厂商模型抽象层与按角色模型路由，单场 token 消耗降低 **XX%**
 - 搭建 LLM-as-Judge 评测流水线，按时间切分 tune/holdout，**双人标注测出人类基线一致率 kappa = 0.XX**，用配对检验给出优化前后差值（p = 0.0X）而非仅报均值
 - 实现 trace 写入路径的隐私脱敏与用户数据删除能力，简历等敏感信息不以明文入库
 - 累计 **XX** 名用户、**XX** 场面试的真实 trace 数据
@@ -561,7 +566,7 @@ async def calibrate_judge(dataset_id, rubric_version, judge_model) -> JudgeCalib
 | **judge 被过拟合** | tune/holdout 按时间切 + 配对检验 + rubric 版本化 |
 | **人工标注质量差** | 只标 30 条但双人标；kappa < 0.6 回去改 rubric 而不是改 judge |
 | 简历隐私泄露 | `redact()` 在写入路径上；按用户隔离；提供删除端点 |
-| API 成本失控 | 用户额度 + 限流 + 从 spans 表实测成本 + 按角色模型路由 |
+| API 成本失控 | 用户额度 + 限流 + 从 spans 表实测 token + 按角色模型路由（不折算金额，见 §8.1） |
 | Prompt 注入 | 分隔标记包裹 + 评估 Agent 显式声明 + 注入测试用例 |
 | 功能铺太开 | 严格 P0 → P1；长期记忆和成本看板已明确推到第 6 周后 |
 | 数据不好看 | 如实记录。"发现问题 → 量化 → 优化 → 验证"本身就是素材 |

@@ -1,4 +1,4 @@
-from types import SimpleNamespace
+﻿from types import SimpleNamespace
 
 import pytest
 
@@ -8,18 +8,16 @@ from app.llm.base import (
     ToolResult,
     ToolResultsMessage,
     ToolSpec,
-    Usage,
     UserMessage,
 )
 from app.llm.openai_provider import OpenAILLM
-from app.llm.pricing import estimate_cost
 
 
 def fake_completion(
     content="hi",
     tool_calls=None,
     finish_reason="stop",
-    model="gpt-4o",
+    model="gpt-5",
     prompt_tokens=100,
     completion_tokens=50,
     cached_tokens=0,
@@ -61,7 +59,7 @@ def fake_tool_call(id, name, arguments):
 
 async def test_builds_request_with_system_and_tools(trace_sink):
     client, completions = fake_client(fake_completion())
-    llm = OpenAILLM(model="gpt-4o", client=client, enable_prompt_cache=False)
+    llm = OpenAILLM(model="gpt-5", client=client, enable_prompt_cache=False)
 
     await llm.chat(
         [UserMessage("你好")],
@@ -71,7 +69,7 @@ async def test_builds_request_with_system_and_tools(trace_sink):
     )
 
     params = completions.params
-    assert params["model"] == "gpt-4o"
+    assert params["model"] == "gpt-5"
     # system 不是独立参数，而是 messages 的第一条
     assert params["messages"] == [
         {"role": "system", "content": "sys"},
@@ -96,7 +94,7 @@ async def test_builds_request_with_system_and_tools(trace_sink):
 
 async def test_prompt_cache_key_derived_from_system(trace_sink):
     client, completions = fake_client(fake_completion())
-    llm = OpenAILLM(model="gpt-4o", client=client, enable_prompt_cache=True)
+    llm = OpenAILLM(model="gpt-5", client=client, enable_prompt_cache=True)
 
     await llm.chat([UserMessage("q")], system="稳定的系统提示")
     key = completions.params["prompt_cache_key"]
@@ -110,7 +108,7 @@ async def test_prompt_cache_key_derived_from_system(trace_sink):
 async def test_legacy_max_tokens_for_third_party_gateways(trace_sink):
     client, completions = fake_client(fake_completion())
     llm = OpenAILLM(
-        model="gpt-4o", client=client, enable_prompt_cache=False, legacy_max_tokens=True
+        model="gpt-5", client=client, enable_prompt_cache=False, legacy_max_tokens=True
     )
 
     await llm.chat([UserMessage("q")], system="s")
@@ -120,7 +118,7 @@ async def test_legacy_max_tokens_for_third_party_gateways(trace_sink):
 
 async def test_converts_history_and_ignores_provider_content(trace_sink):
     client, completions = fake_client(fake_completion())
-    llm = OpenAILLM(model="gpt-4o", client=client, enable_prompt_cache=False)
+    llm = OpenAILLM(model="gpt-5", client=client, enable_prompt_cache=False)
     # provider_content 是 Anthropic 的原始块，OpenAI 侧必须忽略并重建消息
     raw_blocks = [SimpleNamespace(type="thinking")]
 
@@ -164,7 +162,7 @@ async def test_parses_tool_calls_and_does_not_double_count_cache(flush):
             cached_tokens=400,
         )
     )
-    llm = OpenAILLM(model="gpt-4o", client=client, enable_prompt_cache=False)
+    llm = OpenAILLM(model="gpt-5", client=client, enable_prompt_cache=False)
 
     result = await llm.chat([UserMessage("1+2")], prompt_version="v1")
 
@@ -175,18 +173,17 @@ async def test_parses_tool_calls_and_does_not_double_count_cache(flush):
 
     [trace] = await flush()
     [span] = trace.spans
-    assert (span.kind, span.model, span.prompt_version) == ("llm", "gpt-4o", "v1")
+    assert (span.kind, span.model, span.prompt_version) == ("llm", "gpt-5", "v1")
     # prompt_tokens 已经含缓存命中的 400，不能再加一次
     assert span.input_tokens == 1000
     assert span.output_tokens == 200
-    assert span.cost == pytest.approx(result.cost)
 
 
 async def test_broken_tool_arguments_json_does_not_crash(trace_sink):
     client, _ = fake_client(
         fake_completion(tool_calls=[fake_tool_call("t1", "add", "{不是 JSON")])
     )
-    llm = OpenAILLM(model="gpt-4o", client=client, enable_prompt_cache=False)
+    llm = OpenAILLM(model="gpt-5", client=client, enable_prompt_cache=False)
 
     result = await llm.chat([UserMessage("1+2")])
 
@@ -206,24 +203,13 @@ async def test_broken_tool_arguments_json_does_not_crash(trace_sink):
 )
 async def test_finish_reason_mapping(trace_sink, finish_reason, expected):
     client, _ = fake_client(fake_completion(finish_reason=finish_reason))
-    result = await OpenAILLM(model="gpt-4o", client=client).chat([UserMessage("q")])
+    result = await OpenAILLM(model="gpt-5", client=client).chat([UserMessage("q")])
     assert result.stop_reason == expected
 
 
 async def test_empty_choices_raises_upstream_error(trace_sink):
-    empty = SimpleNamespace(model="gpt-4o", choices=[], usage=None)
+    empty = SimpleNamespace(model="gpt-5", choices=[], usage=None)
     client, _ = fake_client(empty)
     with pytest.raises(Exception) as excinfo:
-        await OpenAILLM(model="gpt-4o", client=client).chat([UserMessage("q")])
+        await OpenAILLM(model="gpt-5", client=client).chat([UserMessage("q")])
     assert type(excinfo.value).__name__ == "LLMUpstreamError"
-
-
-def test_estimate_cost_openai_does_not_double_charge_cache():
-    # prompt_tokens=1000 里已经含 400 缓存命中：600 正常 + 400 * 0.1 = 640 个输入价
-    usage = Usage(input_tokens=1000, output_tokens=1000, cache_read_tokens=400)
-    # OpenAI: (600 + 40) * 2.5 + 1000 * 10 = 11600，再除以一百万
-    assert estimate_cost("openai", "gpt-4o", usage) == pytest.approx(0.0116)
-    # 同一份 usage 换一家厂商：Anthropic 的 input_tokens 不含缓存，要另加缓存读
-    # (1000 + 40) * 5 + 1000 * 25 = 30200
-    assert estimate_cost("anthropic", "claude-opus-5", usage) == pytest.approx(0.0302)
-    assert estimate_cost("openai", "unknown-model", usage) == 0.0

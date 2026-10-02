@@ -12,7 +12,7 @@ from app.llm.openai_provider import OpenAILLM
 def test_default_vendor_is_anthropic():
     llm = build_llm_client(Settings(_env_file=None))
     assert isinstance(llm, AnthropicLLM)
-    assert llm.model == "claude-opus-5"
+    assert llm.model == "claude-sonnet-5"
 
 
 def test_switching_vendor_and_model_only_needs_env():

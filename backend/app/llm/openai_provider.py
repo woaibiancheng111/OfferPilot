@@ -35,12 +35,9 @@ from app.llm.errors import (
     LLMRateLimitError,
     LLMUpstreamError,
 )
-from app.llm.pricing import estimate_cost
 from app.tracing import record_llm_usage, trace_span
 
 logger = logging.getLogger(__name__)
-
-VENDOR = "openai"
 
 _FINISH_REASONS: dict[str, StopReason] = {
     "stop": "end_turn",
@@ -113,7 +110,6 @@ class OpenAILLM:
             # prompt_tokens 已经包含缓存命中的 token，不能再叠加 cache_read
             input_tokens=result.usage.input_tokens,
             output_tokens=result.usage.output_tokens,
-            cost=result.cost,
             prompt_version=prompt_version,
         )
         return result
@@ -215,5 +211,4 @@ def _from_openai_response(response: Any) -> LLMResponse:
         stop_reason=_FINISH_REASONS.get(choice.finish_reason or "", "other"),
         usage=usage,
         model=response.model,
-        cost=estimate_cost(VENDOR, response.model, usage),
     )

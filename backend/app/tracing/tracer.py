@@ -122,7 +122,6 @@ def record_llm_usage(
     model: str,
     input_tokens: int,
     output_tokens: int,
-    cost: float,
     prompt_version: str | None = None,
 ) -> None:
     """在当前 span 上记录模型用量，由 LLM 适配层调用。"""
@@ -132,7 +131,6 @@ def record_llm_usage(
     span.model = model
     span.input_tokens += input_tokens
     span.output_tokens += output_tokens
-    span.cost += cost
     if prompt_version is not None:
         span.prompt_version = prompt_version
 

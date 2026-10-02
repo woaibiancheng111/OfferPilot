@@ -110,7 +110,7 @@ async def test_parse_jd_returns_structured_result(flush):
     assert result.analysis.role_title == "后端工程师"
     assert result.analysis.seniority == "中级"
     assert "3 年以上" in result.analysis.seniority_reason
-    assert result.cost > 0
+    assert result.usage.input_tokens > 0
 
     [trace] = await flush()
     # prompt 版本号由 system 内容自动算出，agent span 和 llm span 都带；

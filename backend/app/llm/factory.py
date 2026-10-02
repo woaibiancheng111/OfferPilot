@@ -3,11 +3,17 @@
 业务代码只调 ``build_llm_client(settings)``，切换厂商和模型只需要改 .env：
 
     LLM_VENDOR=openai
-    LLM_MODEL=gpt-4o
+    LLM_MODEL=gpt-5
     OPENAI_API_KEY=sk-...
 
-接第三家模型时，在这里加一个分支 + 一个 provider 模块即可，Agent 层和 API 层不用动。
+接第三家模型时，在这里加一个分支 + 一个 provider 模块即可，
+Agent 层和 API 层不用动。
+
+这里刻意不校验模型名、不查价目表：项目可能要接第三方中转，模型名和单价都不在
+我们控制内，一张写死的表只会持续给出错误的数字。用什么模型由 ``.env`` 说了算。
 """
+
+import logging
 
 import anthropic
 import openai
@@ -18,18 +24,31 @@ from app.llm.base import LLMClient
 from app.llm.errors import LLMNotConfiguredError
 from app.llm.openai_provider import OpenAILLM
 
+logger = logging.getLogger(__name__)
+
 VENDORS = ("anthropic", "openai")
+
+__all__ = ["VENDORS", "build_llm_client", "describe_config"]
 
 
 def build_llm_client(settings: Settings) -> LLMClient:
     vendor = settings.llm_vendor
     if vendor == "anthropic":
-        return _build_anthropic(settings)
-    if vendor == "openai":
-        return _build_openai(settings)
-    raise LLMNotConfiguredError(
-        f"未知的 LLM_VENDOR：{vendor!r}，可选值：{', '.join(VENDORS)}"
-    )
+        client = _build_anthropic(settings)
+    elif vendor == "openai":
+        client = _build_openai(settings)
+    else:
+        raise LLMNotConfiguredError(
+            f"未知的 LLM_VENDOR：{vendor!r}。可选值：{', '.join(VENDORS)}"
+        )
+
+    logger.info("模型：%s / %s", vendor, settings.llm_model)
+    return client
+
+
+def describe_config(settings: Settings) -> str:
+    """给启动日志看的一行配置摘要。"""
+    return f"{settings.llm_vendor} / {settings.llm_model}"
 
 
 def _build_anthropic(settings: Settings) -> AnthropicLLM:

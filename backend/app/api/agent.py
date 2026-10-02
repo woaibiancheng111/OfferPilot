@@ -22,7 +22,8 @@ class DemoResponse(BaseModel):
     stop_reason: str
     steps: int
     trace_id: str
-    cost_usd: float
+    input_tokens: int
+    output_tokens: int
 
 
 @router.post("/demo", response_model=DemoResponse)
@@ -51,5 +52,6 @@ async def run_demo(body: DemoRequest, request: Request) -> DemoResponse:
         stop_reason=result.stop_reason,
         steps=result.steps,
         trace_id=trace.id,
-        cost_usd=result.cost,
+        input_tokens=result.usage.input_tokens,
+        output_tokens=result.usage.output_tokens,
     )

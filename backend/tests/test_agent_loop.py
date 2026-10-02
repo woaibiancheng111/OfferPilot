@@ -156,12 +156,11 @@ async def test_truncated_tool_call_is_not_executed(tools, trace_sink):
     assert len(llm.calls) == 1
 
 
-async def test_usage_and_cost_are_accumulated(tools, trace_sink):
+async def test_usage_is_accumulated(tools, trace_sink):
     llm = ScriptedLLM([reply(tool_calls=[call("add", a=1, b=1)]), reply("2")])
     result = await run_agent(llm, [UserMessage("1+1")], tools=tools)
     assert result.usage.input_tokens == 20
     assert result.usage.output_tokens == 10
-    assert result.cost == pytest.approx(0.002)
 
 
 async def test_trace_tree_shape(tools, flush):

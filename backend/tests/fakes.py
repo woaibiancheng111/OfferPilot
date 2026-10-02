@@ -26,7 +26,6 @@ def reply(
         stop_reason=stop_reason or ("tool_use" if calls else "end_turn"),
         usage=Usage(input_tokens=input_tokens, output_tokens=output_tokens),
         model="fake-model",
-        cost=0.001,
     )
 
 
@@ -62,7 +61,6 @@ class ScriptedLLM:
             model=response.model,
             input_tokens=response.usage.input_tokens,
             output_tokens=response.usage.output_tokens,
-            cost=response.cost,
             prompt_version=prompt_version,
         )
         return response

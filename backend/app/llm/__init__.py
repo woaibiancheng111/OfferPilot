@@ -3,8 +3,9 @@
 - ``base.py``     与厂商无关的数据类型
 - ``errors.py``   与厂商无关的异常
 - ``factory.py``  按 .env 构造具体客户端
-- ``pricing.py``  按厂商分表的成本估算
 - ``anthropic_provider.py`` / ``openai_provider.py``  各家协议差异的转换
+
+只统计 token，不折算金额——可能接第三方中转，模型名和单价不在我们控制内。
 """
 
 from app.llm.base import (
@@ -28,7 +29,7 @@ from app.llm.errors import (
     LLMRateLimitError,
     LLMUpstreamError,
 )
-from app.llm.factory import VENDORS, build_llm_client
+from app.llm.factory import VENDORS, build_llm_client, describe_config
 
 __all__ = [
     "AssistantMessage",
@@ -50,4 +51,5 @@ __all__ = [
     "UserMessage",
     "VENDORS",
     "build_llm_client",
+    "describe_config",
 ]

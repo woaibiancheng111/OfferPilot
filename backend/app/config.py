@@ -11,13 +11,14 @@ class Settings(BaseSettings):
     app_name: str = "OfferPilot"
     database_url: str = "postgresql+asyncpg://offerpilot:offerpilot@localhost:55432/offerpilot"
 
-    # LLM。切换厂商只改 .env 里的 LLM_VENDOR / LLM_MODEL，代码不用动
+    # LLM。切换厂商和模型只改 LLM_VENDOR / LLM_MODEL 两行，代码不动。
+    # 不校验模型名：可能接第三方中转，模型名由那边的可用列表决定
     llm_vendor: str = "anthropic"
-    llm_model: str = "claude-opus-5"
+    llm_model: str = "claude-sonnet-5"
     llm_max_tokens: int = 16000
     # 服务端拒答回退（Claude 官方端点可用；接第三方兼容端点时关掉）
     llm_enable_fallbacks: bool = True
-    # 顶层自动 prompt 缓存
+    # 自动 prompt 缓存
     llm_enable_prompt_cache: bool = True
 
     # anthropic 凭证。留空时由 SDK 按默认顺序查找（环境变量、ant 登录的 profile 等）

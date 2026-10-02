@@ -9,7 +9,7 @@ from app.tracing.serialize import safe_serialize
 async def test_nested_spans_form_a_tree(flush):
     @tracer.observe("tool", name="inner")
     async def inner(x: int) -> int:
-        record_llm_usage(model="m", input_tokens=3, output_tokens=2, cost=0.5)
+        record_llm_usage(model="m", input_tokens=3, output_tokens=2)
         return x * 2
 
     @tracer.observe("agent", name="outer")
@@ -32,7 +32,6 @@ async def test_nested_spans_form_a_tree(flush):
     assert inner1.input == {"x": 1}
     assert inner1.output == 2
     assert trace.total_tokens == 10
-    assert trace.total_cost == pytest.approx(1.0)
     assert all(s.latency_ms is not None for s in trace.spans)
 
 

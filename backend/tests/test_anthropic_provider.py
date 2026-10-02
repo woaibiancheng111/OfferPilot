@@ -9,10 +9,8 @@ from app.llm.base import (
     ToolResult,
     ToolResultsMessage,
     ToolSpec,
-    Usage,
     UserMessage,
 )
-from app.llm.pricing import estimate_cost
 
 
 def fake_response(content, stop_reason="end_turn", model="claude-opus-5", **usage):
@@ -151,22 +149,12 @@ async def test_parses_response_and_records_usage(flush):
     assert (span.kind, span.model, span.prompt_version) == ("llm", "claude-opus-5", "v1")
     assert span.input_tokens == 5000
     assert span.output_tokens == 200
-    assert span.cost == pytest.approx(result.cost)
 
 
 async def test_unknown_stop_reason_maps_to_other(trace_sink):
     client, _, _ = fake_client(fake_response([], stop_reason="pause_turn"))
     result = await AnthropicLLM(model="claude-opus-5", client=client).chat([UserMessage("q")])
     assert result.stop_reason == "other"
-
-
-def test_estimate_cost():
-    usage = Usage(input_tokens=1_000_000, output_tokens=1_000_000, cache_read_tokens=1_000_000)
-    # 5 + 25 + 0.5（缓存读 0.1 倍）
-    assert estimate_cost("anthropic", "claude-opus-5", usage) == pytest.approx(30.5)
-    assert estimate_cost("anthropic", "unknown-model", usage) == 0.0
-    # 厂商名写错也应该静默归零，而不是抛异常影响主流程
-    assert estimate_cost("openai", "claude-opus-5", usage) == 0.0
 
 
 async def test_missing_credentials_raise_clear_error(trace_sink, monkeypatch):

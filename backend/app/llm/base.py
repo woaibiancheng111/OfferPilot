@@ -57,6 +57,13 @@ class ToolSpec:
 
 @dataclass
 class Usage:
+    """本次调用的 token 用量。
+
+    只统计 token，不折算金额：项目可能接第三方中转，模型名和单价都不在我们控制内，
+    维护一张价目表只会持续给出错误的数字。token 数是厂商无关且始终可靠的，
+    成本优化靠的是"少用 token"，而不是"算准了多少钱"。
+    """
+
     input_tokens: int = 0
     output_tokens: int = 0
     cache_read_tokens: int = 0
@@ -69,7 +76,6 @@ class LLMResponse:
     stop_reason: StopReason
     usage: Usage
     model: str
-    cost: float = 0.0
 
 
 class LLMClient(Protocol):

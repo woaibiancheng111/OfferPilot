@@ -20,10 +20,7 @@ from app.llm.errors import (
     LLMRateLimitError,
     LLMUpstreamError,
 )
-from app.llm.pricing import estimate_cost
 from app.tracing import record_llm_usage, trace_span
-
-VENDOR = "anthropic"
 
 _STOP_REASONS: dict[str, StopReason] = {
     "end_turn": "end_turn",
@@ -112,7 +109,6 @@ class AnthropicLLM:
             + result.usage.cache_read_tokens
             + result.usage.cache_write_tokens,
             output_tokens=result.usage.output_tokens,
-            cost=result.cost,
             prompt_version=prompt_version,
         )
         return result
@@ -165,7 +161,7 @@ def _from_anthropic_response(response: Any) -> LLMResponse:
         cache_read_tokens=getattr(raw_usage, "cache_read_input_tokens", None) or 0,
         cache_write_tokens=getattr(raw_usage, "cache_creation_input_tokens", None) or 0,
     )
-    # 发生回退时 response.model 是实际服务的模型，按它计费
+    # 发生回退时 response.model 是实际服务的模型，trace 里按它记录
     model = response.model
     return LLMResponse(
         message=AssistantMessage(
@@ -174,5 +170,4 @@ def _from_anthropic_response(response: Any) -> LLMResponse:
         stop_reason=_STOP_REASONS.get(response.stop_reason or "", "other"),
         usage=usage,
         model=model,
-        cost=estimate_cost(VENDOR, model, usage),
     )

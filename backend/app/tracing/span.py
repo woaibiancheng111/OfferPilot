@@ -30,7 +30,6 @@ class Span:
     prompt_version: str | None = None
     input_tokens: int = 0
     output_tokens: int = 0
-    cost: float = 0.0
     error: str | None = None
     attributes: dict[str, Any] = field(default_factory=dict)
     started_at: datetime = field(default_factory=utcnow)
@@ -61,10 +60,6 @@ class Trace:
     @property
     def total_tokens(self) -> int:
         return sum(s.input_tokens + s.output_tokens for s in self.spans)
-
-    @property
-    def total_cost(self) -> float:
-        return sum(s.cost for s in self.spans)
 
     def end(self) -> None:
         self.ended_at = utcnow()

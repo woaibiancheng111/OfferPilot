@@ -75,8 +75,7 @@ backend/
 │   │   ├── errors.py        # 与厂商无关的异常
 │   │   ├── factory.py       # 按 .env 构造客户端
 │   │   ├── anthropic_provider.py  # Claude 适配器
-│   │   ├── openai_provider.py     # OpenAI 兼容端点适配器
-│   │   └── pricing.py       # 按厂商分表的成本估算
+│   │   └── openai_provider.py     # OpenAI 兼容端点适配器
 │   ├── security/redact.py   # 落库前脱敏（手机号/邮箱/身份证/学号/银行卡）
 │   ├── tools/registry.py    # 工具注册中心：签名 → JSON Schema + 参数校验
 │   ├── tracing/             # 自研 Trace SDK
@@ -124,7 +123,8 @@ backend/
 - 业务层只认识 `app/llm/base.py` 里的消息格式和 `LLMClient` 协议，不 import 任何厂商 SDK
 - 厂商异常在 provider 层翻译成中立异常（`errors.py`），API 层据此映射 HTTP 状态码，不认 `anthropic.AuthenticationError` 这类具体类型
 - 两家的协议差异（system 的位置、工具结果的消息形态、工具参数的 JSON 字符串）都在各自 provider 里转换
-- 两家对 token 的口径不同，所以成本估算按厂商分表：Anthropic 的 `input_tokens` 不含缓存，OpenAI 的 `prompt_tokens` 已含缓存，混算会算错
+- **只统计 token，不折算金额**：可能接第三方中转，模型名和单价不在我们控制内，写死的价目表只会持续给出错误数字。要换算成钱，乘自己的单价即可
+- 代码里不校验模型名，用哪家、用哪个模型完全由 `.env` 决定
 - `prompt_cache_key` 由 system 提示自动派生，保证同一套提示稳定命中缓存
 
 **Prompt 版本号**（`app/agents/prompts/`）

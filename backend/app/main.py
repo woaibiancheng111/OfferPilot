@@ -8,10 +8,11 @@ from app.api import agent, jd, traces
 from app.config import get_settings
 from app.db.session import create_engine, create_session_factory
 from app.db.trace_sink import SqlAlchemyTraceSink
-from app.llm import build_llm_client
+from app.llm import build_llm_client, describe_config
 from app.tracing import BatchExporter, tracer
 
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -32,6 +33,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.session_factory = session_factory
     # 厂商由 .env 的 LLM_VENDOR 决定，这里不关心具体是哪家
     app.state.llm = build_llm_client(settings)
+    logger.info("模型配置：%s", describe_config(settings))
     try:
         yield
     finally:

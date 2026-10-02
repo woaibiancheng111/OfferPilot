@@ -27,7 +27,8 @@ class ParseJDResponse(BaseModel):
     responsibilities: list[str]
     keywords: list[str]
     attempts: int = Field(description="为了拿到结构化结果用了几次尝试")
-    cost_usd: float
+    input_tokens: int
+    output_tokens: int
     trace_id: str
 
 
@@ -53,6 +54,7 @@ async def parse_jd_endpoint(body: ParseJDRequest, request: Request) -> ParseJDRe
         responsibilities=a.responsibilities,
         keywords=a.keywords,
         attempts=result.attempts,
-        cost_usd=result.cost,
+        input_tokens=result.usage.input_tokens,
+        output_tokens=result.usage.output_tokens,
         trace_id=trace.id,
     )

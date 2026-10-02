@@ -27,7 +27,6 @@ class AgentResult:
     steps: int
     messages: list[Message]
     usage: Usage = field(default_factory=Usage)
-    cost: float = 0.0
 
 
 @dataclass
@@ -58,7 +57,6 @@ async def run_agent(
     history = list(messages)
     tool_specs = tools.specs if tools else None
     total_usage = Usage()
-    total_cost = 0.0
     # 版本号默认由 system 提示的内容算出，不让调用方手写：
     # 手写的版本号改 prompt 时很容易忘改，后面的前后对比就悄悄失效了
     effective_version = prompt_version or (version_of(system) if system else None)
@@ -67,7 +65,6 @@ async def run_agent(
         span.prompt_version = effective_version
 
         async def call_llm(tool_choice: Literal["auto", "none"] = "auto"):
-            nonlocal total_cost
             response = await llm.chat(
                 history,
                 system=system,
@@ -76,7 +73,6 @@ async def run_agent(
                 prompt_version=effective_version,
             )
             _add_usage(total_usage, response.usage)
-            total_cost += response.cost
             history.append(response.message)
             return response
 
@@ -89,7 +85,6 @@ async def run_agent(
                 steps=steps,
                 messages=history,
                 usage=total_usage,
-                cost=total_cost,
             )
 
         for step in range(1, config.max_steps + 1):
