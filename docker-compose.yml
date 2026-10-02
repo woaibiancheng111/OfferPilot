@@ -1,0 +1,30 @@
+services:
+  postgres:
+    # 自带 pgvector 扩展，后面做记忆检索和评测集语义去重会用到
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: offerpilot
+      POSTGRES_PASSWORD: offerpilot
+      POSTGRES_DB: offerpilot
+    ports:
+      - "55432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U offerpilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "56379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
