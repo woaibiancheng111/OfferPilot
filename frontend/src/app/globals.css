@@ -1,43 +1,150 @@
 @import "tailwindcss";
 
+/*
+ * 设计基调：仪表盘式的克制。
+ * 底色是带冷调的近黑，不用纯黑；强调色只有一个；span 类型的四种颜色
+ * 是同一家族的低饱和度色（仪表盘配色），不是四个抢眼的强调色。
+ * 卡片靠背景层次而不是边框堆叠，阴影带底色色相而不是纯黑。
+ */
 @theme {
-  --color-surface: #0d1117;
-  --color-panel: #161b22;
-  --color-panel-2: #1c2129;
-  --color-line: #30363d;
-  --color-ink: #e6edf3;
-  --color-ink-dim: #8b949e;
-  --color-ink-faint: #6e7681;
-  --color-accent: #4493f8;
-  --color-ok: #3fb950;
-  --color-warn: #d29922;
-  --color-bad: #f85149;
-  --color-agent: #a371f7;
-  --color-llm: #4493f8;
-  --color-tool: #3fb950;
-  --color-custom: #d29922;
+  --color-bg: #0a0b0e;
+  --color-bg-2: #101318;
+  --color-bg-3: #171b22;
+  --color-line: #1e232b;
+  --color-line-2: #2b323c;
+
+  --color-ink: #e8ebf0;
+  --color-ink-2: #98a1ae;
+  --color-ink-3: #69717d;
+
+  /* 唯一的强调色 */
+  --color-accent: #5b9bd5;
+  --color-accent-dim: #16283a;
+
+  /* span 类型：低饱和度，同一色温家族 */
+  --color-k-agent: #8e86d4;
+  --color-k-llm: #5b9bd5;
+  --color-k-tool: #58a67e;
+  --color-k-custom: #c2a15a;
+
+  --color-ok: #5ba97e;
+  --color-warn: #c2a15a;
+  --color-bad: #c86a62;
+
+  --radius-sm: 0.375rem;
+  --radius-md: 0.625rem;
+  --radius-lg: 0.875rem;
+
+  --font-sans: var(--font-geist), "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, Menlo, Consolas, monospace;
 }
 
-html,
+html {
+  color-scheme: dark;
+}
+
 body {
-  background: var(--color-surface);
+  background: var(--color-bg);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/*
+ * 极轻的噪点。纯色平面在深色底上显得很「数字」，加一点颗粒能去掉那种塑料感。
+ * pointer-events: none，不挡交互。
+ */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.022;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+body > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* 数据一律用等宽 + 表格数字，纵向对齐才读得下去 */
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "zero" 1;
+}
+
+/* 小标签：字距拉开、字重中等，别用全大写标题那种吵法 */
+.label {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-ink-3);
+}
+
+.muted {
+  color: var(--color-ink-2);
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+/* 卡片不靠边框，靠背景层次 + 带色相的阴影 */
+.card {
+  background: var(--color-bg-2);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-lg);
+  box-shadow:
+    0 1px 2px rgb(4 6 10 / 0.4),
+    0 8px 24px -12px rgb(4 6 10 / 0.6);
+}
+
+.skeleton {
+  background: linear-gradient(90deg, var(--color-bg-3) 25%, var(--color-line) 50%, var(--color-bg-3) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.6s ease-in-out infinite;
+  border-radius: var(--radius-sm);
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
+}
+
+::selection {
+  background: var(--color-accent-dim);
   color: var(--color-ink);
 }
 
-body {
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei",
-    sans-serif;
+/* 滚动条低调一点，默认那条在深色底上很扎眼 */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line-2) transparent;
 }
-
-code,
-pre,
-.mono {
-  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
 }
-
-/* 长 JSON 用横向滚动而不是换行，嵌套结构才看得清 */
-pre.json {
-  white-space: pre-wrap;
-  word-break: break-word;
+*::-webkit-scrollbar-thumb {
+  background: var(--color-line-2);
+  border-radius: 999px;
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #3a424e;
+  background-clip: content-box;
 }

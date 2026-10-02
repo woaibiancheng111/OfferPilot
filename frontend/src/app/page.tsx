@@ -3,8 +3,19 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import type { ParseJDResponse, SessionResponse, Turn } from "@/lib/types";
-import { Badge, Button, ErrorBox, Panel, ScoreBar, TraceLink } from "@/components/ui";
+import type { ParseJDResponse, PlanTopic, SessionResponse, Turn } from "@/lib/types";
+import {
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  EmptyState,
+  ErrorBox,
+  PageHeader,
+  ScoreBar,
+  Stat,
+  TraceLink,
+} from "@/components/ui";
 
 const SAMPLE_JD = `后端工程师（社招）
 
@@ -35,7 +46,7 @@ export default function InterviewPage() {
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [session?.turns.length]);
 
   async function run(label: string, fn: () => Promise<void>) {
@@ -51,14 +62,15 @@ export default function InterviewPage() {
   }
 
   const onParse = () =>
-    run("解析 JD", async () => {
+    run("解析", async () => {
       const r = await api.parseJD(jdText);
       setAnalysis(r);
+      setSession(null);
       setStage("ready");
     });
 
   const onStart = () =>
-    run("规划面试", async () => {
+    run("规划", async () => {
       if (!analysis) return;
       const r = await api.startInterview(analysis, userId, resumeText);
       setSession(r);
@@ -67,7 +79,7 @@ export default function InterviewPage() {
     });
 
   const onAnswer = () =>
-    run("评估并出下一题", async () => {
+    run("评估", async () => {
       if (!session) return;
       const text = answer.trim();
       if (!text) return;
@@ -86,227 +98,280 @@ export default function InterviewPage() {
   };
 
   const pending = session?.turns.find((t) => !t.answer) ?? null;
+  const inInterview = stage === "interviewing" || stage === "done";
+  // 侧栏没内容时不分栏，否则右侧会空掉一大块，比留白更难看
+  const hasSidebar = Boolean(analysis) || (stage === "ready" && !session) || Boolean(session);
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">模拟面试</h1>
-          <p className="text-xs text-[var(--color-ink-faint)]">
-            解析 JD → 规划大纲 → 多轮问答 → 逐轮评估
-          </p>
-        </div>
-        {stage !== "jd" && (
-          <Button variant="ghost" onClick={reset}>
-            重新开始
-          </Button>
-        )}
-      </div>
-
-      <ErrorBox error={error} />
-
-      {/* ---- 第一步：JD ---- */}
-      {(stage === "jd" || stage === "ready") && (
-        <Panel
-          title="职位描述"
-          right={
-            <span className="text-xs text-[var(--color-ink-faint)]">
-              {analysis ? `第 ${analysis.attempts} 次尝试 · ${analysis.input_tokens + analysis.output_tokens} tokens` : null}
-            </span>
-          }
-        >
-          <textarea
-            value={jdText}
-            onChange={(e) => setJdText(e.target.value)}
-            rows={6}
-            className="w-full resize-y rounded-md border border-[var(--color-line)] bg-[var(--color-panel-2)] p-3 text-sm outline-none focus:border-[var(--color-accent)]"
-          />
-          <div className="mt-3 flex items-center gap-3">
-            <Button onClick={onParse} disabled={!!busy || jdText.trim().length < 10}>
-              {busy === "解析 JD" ? "解析中…" : analysis ? "重新解析" : "解析 JD"}
+    <>
+      <PageHeader
+        title="模拟面试"
+        description="粘贴职位描述，解析出考察点，逐轮问答并给出可解释的评估。"
+        action={
+          stage !== "jd" && (
+            <Button variant="ghost" onClick={reset}>
+              重新开始
             </Button>
-            {analysis && (
-              <span className="text-xs text-[var(--color-ink-dim)]">
-                职级 <Badge tone="accent">{analysis.seniority}</Badge>{" "}
-                <Link href={`/traces/${analysis.trace_id}`} className="hover:underline">
-                  看这次解析的 trace
-                </Link>
-              </span>
-            )}
-          </div>
-        </Panel>
-      )}
+          )
+        }
+      />
 
-      {/* ---- 解析结果 ---- */}
-      {analysis && (
-        <Panel title="JD 解析结果">
-          <dl className="grid gap-2 text-sm sm:grid-cols-2">
-            <Field label="岗位">{analysis.role_title ?? "—"}</Field>
-            <Field label="职级依据">{analysis.seniority_reason}</Field>
-            <Field label="业务方向">{analysis.business_domain ?? "—"}</Field>
-            <Field label="公司">{analysis.company ?? "—"}</Field>
-          </dl>
-          <div className="mt-3 space-y-2 text-sm">
-            <TagRow label="硬性要求" items={analysis.skills_required} tone="accent" />
-            <TagRow label="加分项" items={analysis.skills_nice_to_have} />
-            <TagRow label="关键词" items={analysis.keywords} />
-          </div>
-        </Panel>
-      )}
+      <div
+        className={
+          hasSidebar
+            ? "grid gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:items-start"
+            : "mx-auto max-w-3xl"
+        }
+      >
+        {/* ---------- 主列：对话 ---------- */}
+        <div className="order-2 space-y-5 lg:order-1">
+          <ErrorBox error={error} />
 
-      {/* ---- 第二步：开始面试 ---- */}
-      {stage === "ready" && !session && (
-        <Panel title="开始面试">
-          <label className="block text-xs text-[var(--color-ink-faint)]">
-            用户 ID（用于按用户查询历史）
-            <input
-              value={userId}
-              onChange={(e) => setUserId(e.target.value)}
-              className="mt-1 w-full rounded-md border border-[var(--color-line)] bg-[var(--color-panel-2)] p-2 text-sm outline-none focus:border-[var(--color-accent)]"
-            />
-          </label>
-          <label className="mt-3 block text-xs text-[var(--color-ink-faint)]">
-            简历（可选，只进 prompt，不落库）
-            <textarea
-              value={resumeText}
-              onChange={(e) => setResumeText(e.target.value)}
-              rows={4}
-              className="mt-1 w-full resize-y rounded-md border border-[var(--color-line)] bg-[var(--color-panel-2)] p-2 text-sm outline-none focus:border-[var(--color-accent)]"
-            />
-          </label>
-          <div className="mt-3">
-            <Button onClick={onStart} disabled={!!busy}>
-              {busy === "规划面试" ? "规划中，8-15 秒…" : "开始面试"}
-            </Button>
-          </div>
-        </Panel>
-      )}
-
-      {/* ---- 第三步：面试进行中 ---- */}
-      {session && (
-        <Panel
-          title="面试大纲"
-          right={<span className="text-xs text-[var(--color-ink-faint)]">共 {session.total_tokens} tokens</span>}
-        >
-          <ul className="space-y-1.5 text-sm">
-            {session.plan.topics.map((t, i) => (
-              <li key={i} className="flex gap-2">
-                <span className="w-5 shrink-0 text-[var(--color-ink-faint)]">{i + 1}.</span>
-                <span>
-                  <span className="text-[var(--color-ink)]">{t.topic}</span>{" "}
-                  <Badge>{t.difficulty}</Badge>
-                  <span className="ml-2 text-xs text-[var(--color-ink-faint)]">{t.why}</span>
-                </span>
-              </li>
-            ))}
-          </ul>
-          {session.plan.focus_points.length > 0 && (
-            <p className="mt-3 text-xs text-[var(--color-ink-dim)]">
-              重点验证：{session.plan.focus_points.join("、")}
-            </p>
+          {!inInterview && (
+            <Card>
+              <CardHeader
+                title="职位描述"
+                hint={analysis ? `${analysis.attempts} 次尝试` : undefined}
+              />
+              <div className="p-5">
+                <textarea
+                  value={jdText}
+                  onChange={(e) => setJdText(e.target.value)}
+                  rows={7}
+                  placeholder="粘贴 JD 原文"
+                  className="w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3.5 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-accent)]"
+                />
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <Button onClick={onParse} disabled={!!busy || jdText.trim().length < 10}>
+                    {busy === "解析" ? "解析中，约 5 秒…" : analysis ? "重新解析" : "解析 JD"}
+                  </Button>
+                  {analysis && (
+                    <span className="text-xs text-[var(--color-ink-3)]">
+                      <TraceLink id={analysis.trace_id} /> · {analysis.input_tokens + analysis.output_tokens} tokens
+                    </span>
+                  )}
+                </div>
+              </div>
+            </Card>
           )}
-        </Panel>
-      )}
 
-      {session && (
-        <div className="space-y-3">
-          {session.turns.map((t) => (
-            <TurnCard key={t.turn_index} turn={t} />
-          ))}
+          {session ? (
+            <>
+              {session.turns.map((t) => (
+                <TurnCard key={t.turn_index} turn={t} />
+              ))}
+              <div ref={bottomRef} />
+            </>
+          ) : (
+            !analysis && (
+              <EmptyState
+                title="还没有开始"
+                hint="先解析一份 JD。解析结果会决定面试问什么，所以别急着跳过。"
+              />
+            )
+          )}
+
+          {session && stage !== "done" && pending && (
+            <Card>
+              <CardHeader title={`第 ${pending.turn_index + 1} 轮 · 你的回答`} />
+              <div className="p-5">
+                <textarea
+                  value={answer}
+                  onChange={(e) => setAnswer(e.target.value)}
+                  rows={5}
+                  placeholder="按你真实的面试状态回答，不用追求好看"
+                  className="w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3.5 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-accent)]"
+                />
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  <Button onClick={onAnswer} disabled={!!busy || !answer.trim()}>
+                    {busy === "评估" ? "评估中，约 10 秒…" : "提交回答"}
+                  </Button>
+                  <span className="text-xs text-[var(--color-ink-3)]">
+                    会先跑评估 Agent，再据此决定下一题
+                  </span>
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {stage === "done" && session && (
+            <Card>
+              <div className="p-5">
+                <p className="text-sm font-medium">面试结束</p>
+                <p className="muted mt-1 text-sm">
+                  共 {session.turns.length} 轮，累计 {session.total_tokens} tokens。
+                </p>
+                <p className="mt-3">
+                  <Link
+                    href={`/traces/${session.trace_id}`}
+                    className="text-xs text-[var(--color-ink-3)] transition-colors hover:text-[var(--color-accent)]"
+                  >
+                    看最后这一轮的调用树 →
+                  </Link>
+                </p>
+              </div>
+            </Card>
+          )}
         </div>
-      )}
 
-      {session && stage !== "done" && pending && (
-        <Panel title={`第 ${pending.turn_index + 1} 轮 · 你的回答`}>
-          <textarea
-            value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-            rows={4}
-            placeholder="按你真实的面试状态回答，不用追求好看"
-            className="w-full resize-y rounded-md border border-[var(--color-line)] bg-[var(--color-panel-2)] p-3 text-sm outline-none focus:border-[var(--color-accent)]"
-          />
-          <div className="mt-3 flex items-center gap-3">
-            <Button onClick={onAnswer} disabled={!!busy || !answer.trim()}>
-              {busy === "评估并出下一题" ? "评估中，约 10 秒…" : "提交回答"}
-            </Button>
-            <span className="text-xs text-[var(--color-ink-faint)]">
-              会先跑评估 Agent，再据此出下一题
-            </span>
-          </div>
-        </Panel>
-      )}
+        {/* ---------- 侧栏：静态资料 ---------- */}
+        <aside className="order-1 space-y-5 lg:order-2 lg:sticky lg:top-20">
+          {analysis && (
+            <Card>
+              <CardHeader title="JD 解析" />
+              <div className="space-y-4 p-5">
+                <dl className="space-y-3 text-sm">
+                  <Field label="岗位">{analysis.role_title ?? "—"}</Field>
+                  <Field label="职级依据">{analysis.seniority_reason}</Field>
+                  <Field label="业务方向">{analysis.business_domain ?? "—"}</Field>
+                </dl>
+                <div className="space-y-2.5 border-t border-[var(--color-line)] pt-4">
+                  <TagRow label="硬性要求" items={analysis.skills_required} tone="accent" />
+                  <TagRow label="加分项" items={analysis.skills_nice_to_have} />
+                  <TagRow label="关键词" items={analysis.keywords} />
+                </div>
+              </div>
+            </Card>
+          )}
 
-      {stage === "done" && session && (
-        <Panel title="面试结束">
-          <p className="text-sm text-[var(--color-ink-dim)]">
-            共 {session.turns.length} 轮，累计 {session.total_tokens} tokens。
-          </p>
-          <div className="mt-2 text-xs">
-            <TraceLink id={session.trace_id} />
-          </div>
-        </Panel>
-      )}
+          {stage === "ready" && !session && (
+            <Card>
+              <CardHeader title="开始面试" />
+              <div className="space-y-4 p-5">
+                <label className="block">
+                  <span className="label">用户 ID</span>
+                  <input
+                    value={userId}
+                    onChange={(e) => setUserId(e.target.value)}
+                    className="mono mt-1.5 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] px-3 py-2 text-sm outline-none transition-colors focus:border-[var(--color-accent)]"
+                  />
+                </label>
+                <label className="block">
+                  <span className="label">简历（可选）</span>
+                  <span className="mt-1.5 block text-[11px] leading-relaxed text-[var(--color-ink-3)]">
+                    只进 prompt，不落库
+                  </span>
+                  <textarea
+                    value={resumeText}
+                    onChange={(e) => setResumeText(e.target.value)}
+                    rows={4}
+                    className="mt-1.5 w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3 text-sm leading-relaxed outline-none transition-colors focus:border-[var(--color-accent)]"
+                  />
+                </label>
+                <Button onClick={onStart} disabled={!!busy} className="w-full">
+                  {busy === "规划" ? "规划中，8-15 秒…" : "开始面试"}
+                </Button>
+              </div>
+            </Card>
+          )}
 
-      <div ref={bottomRef} />
-    </div>
+          {session && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <Stat label="轮次" value={`${session.turns.length}`} />
+                <Stat label="tokens" value={`${session.total_tokens}`} />
+              </div>
+
+              <Card>
+                <CardHeader title="面试大纲" hint={`${session.plan.topics.length} 个考察点`} />
+                <ol className="space-y-3 p-5">
+                  {session.plan.topics.map((t, i) => (
+                    <TopicRow key={i} index={i} topic={t} active={pending?.topic === t.topic} />
+                  ))}
+                </ol>
+                {session.plan.focus_points.length > 0 && (
+                  <div className="border-t border-[var(--color-line)] px-5 py-4">
+                    <span className="label">重点验证</span>
+                    <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-ink-2)]">
+                      {session.plan.focus_points.join("、")}
+                    </p>
+                  </div>
+                )}
+              </Card>
+            </>
+          )}
+        </aside>
+      </div>
+    </>
   );
 }
 
 function TurnCard({ turn }: { turn: Turn }) {
+  const ev = turn.evaluation;
   return (
-    <Panel
-      title={`第 ${turn.turn_index + 1} 轮`}
-      right={
-        <span className="flex items-center gap-2 text-xs text-[var(--color-ink-faint)]">
-          <Badge>{turn.difficulty}</Badge>
-          <span>{turn.topic}</span>
-        </span>
-      }
-    >
-      <p className="text-sm leading-relaxed">
-        <span className="mr-2 text-[var(--color-llm)]">问</span>
-        {turn.question}
-      </p>
-      {turn.answer ? (
-        <p className="mt-3 text-sm leading-relaxed">
-          <span className="mr-2 text-[var(--color-tool)]">答</span>
-          {turn.answer}
+    <Card as="article">
+      <CardHeader
+        title={`第 ${turn.turn_index + 1} 轮`}
+        right={
+          <span className="flex items-center gap-2">
+            <Badge>{turn.difficulty}</Badge>
+            <span className="text-[11px] text-[var(--color-ink-3)]">{turn.topic}</span>
+          </span>
+        }
+      />
+      <div className="space-y-4 p-5">
+        <p className="text-[15px] leading-[1.7] text-pretty">
+          <span className="mono mr-2 text-[11px] font-semibold text-[var(--color-k-llm)]">问</span>
+          {turn.question}
         </p>
-      ) : (
-        <p className="mt-3 text-sm text-[var(--color-ink-faint)]">等待回答…</p>
-      )}
+        {turn.answer ? (
+          <p className="text-[15px] leading-[1.7] text-pretty">
+            <span className="mono mr-2 text-[11px] font-semibold text-[var(--color-k-tool)]">答</span>
+            {turn.answer}
+          </p>
+        ) : (
+          <p className="text-sm text-[var(--color-ink-3)]">等待回答…</p>
+        )}
 
-      {turn.evaluation && (
-        <div className="mt-4 rounded-md bg-[var(--color-panel-2)] p-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <Badge tone="accent">评估</Badge>
-            <ScoreBar label="技术深度" value={turn.evaluation.technical_depth} />
-            <ScoreBar label="表达" value={turn.evaluation.clarity} />
-            <ScoreBar label="有据" value={turn.evaluation.evidence} />
-            <ScoreBar label="切题" value={turn.evaluation.relevance} />
+        {ev && (
+          <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg-3)]/60 p-4">
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+              <Badge tone="accent">评估</Badge>
+              <ScoreBar label="技术深度" value={ev.technical_depth} />
+              <ScoreBar label="表达" value={ev.clarity} />
+              <ScoreBar label="有据" value={ev.evidence} />
+              <ScoreBar label="切题" value={ev.relevance} />
+            </div>
+            <p className="muted mt-3 text-[13px]">{ev.summary}</p>
+            <p className="mt-2 border-l-2 border-[var(--color-k-custom)]/40 pl-3 text-[13px] leading-relaxed text-[var(--color-ink-2)]">
+              下一步{ACTION_LABELS[ev.next_action] ?? ev.next_action} —— {ev.follow_up_reason}
+            </p>
           </div>
-          <p className="mt-2 text-xs text-[var(--color-ink-dim)]">
-            {turn.evaluation.summary}
-          </p>
-          <p className="mt-1 text-xs text-[var(--color-ink-faint)]">
-            下一步：{actionLabel(turn.evaluation.next_action)} ——{" "}
-            {turn.evaluation.follow_up_reason}
-          </p>
-        </div>
-      )}
-    </Panel>
+        )}
+      </div>
+    </Card>
   );
 }
 
-function actionLabel(a: string): string {
-  return { follow_up: "追问", switch_topic: "换题", increase_difficulty: "加难度" }[a] ?? a;
+const ACTION_LABELS: Record<string, string> = {
+  follow_up: "追问",
+  switch_topic: "换题",
+  increase_difficulty: "加难度",
+};
+
+function TopicRow({ index, topic, active }: { index: number; topic: PlanTopic; active: boolean }) {
+  return (
+    <li className="flex gap-3">
+      <span className="mono mt-[1px] w-4 shrink-0 text-[11px] text-[var(--color-ink-3)]">
+        {index + 1}
+      </span>
+      <div className={active ? "text-[var(--color-ink)]" : ""}>
+        <div className="flex items-center gap-2">
+          <span className="text-[13px] font-medium">{topic.topic}</span>
+          {active && <Badge tone="accent">进行中</Badge>}
+          <span className="text-[11px] text-[var(--color-ink-3)]">{topic.difficulty}</span>
+        </div>
+        <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-ink-3)]">{topic.why}</p>
+      </div>
+    </li>
+  );
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <dt className="text-xs text-[var(--color-ink-faint)]">{label}</dt>
-      <dd className="text-sm">{children}</dd>
+      <dt className="label">{label}</dt>
+      <dd className="mt-1 text-[13px] leading-relaxed text-[var(--color-ink-2)]">{children}</dd>
     </div>
   );
 }
@@ -314,17 +379,17 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function TagRow({
   label,
   items,
-  tone = "dim",
+  tone = "neutral",
 }: {
   label: string;
   items: string[];
-  tone?: "dim" | "accent";
+  tone?: "neutral" | "accent";
 }) {
   if (!items.length) return null;
   return (
-    <div className="flex items-start gap-2">
-      <span className="w-16 shrink-0 pt-0.5 text-xs text-[var(--color-ink-faint)]">{label}</span>
-      <span className="flex flex-wrap gap-1">
+    <div className="flex items-start gap-3">
+      <span className="label w-14 shrink-0 pt-[5px]">{label}</span>
+      <span className="flex flex-wrap gap-1.5">
         {items.map((s, i) => (
           <Badge key={i} tone={tone}>
             {s}
