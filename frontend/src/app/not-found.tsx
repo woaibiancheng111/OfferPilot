@@ -3,7 +3,7 @@ import { Button, Card, EmptyState } from "@/components/ui";
 
 export default function NotFound() {
   return (
-    <div className="mx-auto max-w-lg py-16">
+    <div className="mx-auto max-w-[32rem] py-16">
       <p className="mono text-[11px] tracking-[0.2em] text-[var(--color-ink-3)]">404</p>
       <h1 className="mt-3 text-[28px] font-semibold tracking-[-0.02em]">这个页面不存在</h1>
       <p className="muted mt-3 text-sm">

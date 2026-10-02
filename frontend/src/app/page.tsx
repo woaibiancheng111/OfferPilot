@@ -120,7 +120,8 @@ export default function InterviewPage() {
         className={
           hasSidebar
             ? "grid gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:items-start"
-            : "mx-auto max-w-3xl"
+            // Tailwind 4 的 max-w-* 走的是 spacing scale，max-w-3xl 不再等于 48rem
+          : "mx-auto max-w-[48rem]"
         }
       >
         {/* ---------- 主列：对话 ---------- */}
@@ -139,7 +140,7 @@ export default function InterviewPage() {
                   onChange={(e) => setJdText(e.target.value)}
                   rows={7}
                   placeholder="粘贴 JD 原文"
-                  className="w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3.5 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-accent)]"
+                  className="w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg-3)] p-3.5 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-accent)] focus:bg-[var(--color-bg-2)]"
                 />
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   <Button onClick={onParse} disabled={!!busy || jdText.trim().length < 10}>
@@ -180,7 +181,7 @@ export default function InterviewPage() {
                   onChange={(e) => setAnswer(e.target.value)}
                   rows={5}
                   placeholder="按你真实的面试状态回答，不用追求好看"
-                  className="w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3.5 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-accent)]"
+                  className="w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg-3)] p-3.5 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-accent)] focus:bg-[var(--color-bg-2)]"
                 />
                 <div className="mt-3 flex flex-wrap items-center gap-3">
                   <Button onClick={onAnswer} disabled={!!busy || !answer.trim()}>
@@ -215,6 +216,7 @@ export default function InterviewPage() {
         </div>
 
         {/* ---------- 侧栏：静态资料 ---------- */}
+        {hasSidebar && (
         <aside className="order-1 space-y-5 lg:order-2 lg:sticky lg:top-20">
           {analysis && (
             <Card>
@@ -243,7 +245,7 @@ export default function InterviewPage() {
                   <input
                     value={userId}
                     onChange={(e) => setUserId(e.target.value)}
-                    className="mono mt-1.5 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] px-3 py-2 text-sm outline-none transition-colors focus:border-[var(--color-accent)]"
+                    className="mono mt-1.5 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg-3)] px-3 py-2 text-sm outline-none transition-colors focus:border-[var(--color-accent)] focus:bg-[var(--color-bg-2)]"
                   />
                 </label>
                 <label className="block">
@@ -255,7 +257,7 @@ export default function InterviewPage() {
                     value={resumeText}
                     onChange={(e) => setResumeText(e.target.value)}
                     rows={4}
-                    className="mt-1.5 w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3 text-sm leading-relaxed outline-none transition-colors focus:border-[var(--color-accent)]"
+                    className="mt-1.5 w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg-3)] p-3 text-sm leading-relaxed outline-none transition-colors focus:border-[var(--color-accent)] focus:bg-[var(--color-bg-2)]"
                   />
                 </label>
                 <Button onClick={onStart} disabled={!!busy} className="w-full">
@@ -291,6 +293,7 @@ export default function InterviewPage() {
             </>
           )}
         </aside>
+        )}
       </div>
     </>
   );

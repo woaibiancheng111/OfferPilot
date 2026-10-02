@@ -35,7 +35,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           跳到主内容
         </a>
 
-        <header className="sticky top-0 z-20 border-b border-[var(--color-line)] bg-[var(--color-bg)]/85 backdrop-blur-xl">
+        <header className="sticky top-0 z-20 border-b border-[var(--color-line)] bg-[var(--color-bg)]/90 backdrop-blur-xl">
           <div className="mx-auto flex h-14 max-w-[1400px] items-center gap-8 px-6 lg:px-10">
             <Link href="/" className="flex items-center gap-2.5">
               <span className="grid size-6 place-items-center rounded-[7px] bg-[var(--color-accent)]/15 text-[13px] font-semibold text-[var(--color-accent)]">

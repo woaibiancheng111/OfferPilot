@@ -64,11 +64,11 @@ export function Button({
 
   const variants = {
     primary:
-      "bg-[var(--color-accent)] px-3.5 py-2 text-[#0a0b0e] font-semibold " +
-      "shadow-[0_1px_0_rgb(255_255_255/0.15)_inset] hover:brightness-110",
+      "bg-[var(--color-accent)] px-3.5 py-2 text-white " +
+      "shadow-[0_1px_0_rgb(255_255_255/0.18)_inset,0_1px_2px_rgb(47_111_159/0.25)] hover:brightness-110",
     ghost:
-      "px-3 py-2 text-[var(--color-ink-2)] border border-[var(--color-line)] " +
-      "hover:border-[var(--color-line-2)] hover:bg-[var(--color-bg-3)] hover:text-[var(--color-ink)]",
+      "px-3 py-2 text-[var(--color-ink-2)] border border-[var(--color-line-2)] " +
+      "hover:border-[var(--color-ink-3)] hover:bg-[var(--color-bg-3)] hover:text-[var(--color-ink)]",
     text: "px-1.5 py-1 text-[var(--color-ink-2)] hover:text-[var(--color-accent)]",
   };
 
@@ -91,13 +91,13 @@ type Tone = "neutral" | "accent" | "agent" | "llm" | "tool" | "custom" | "ok" | 
 const TONE_STYLES: Record<Tone, string> = {
   neutral: "bg-[var(--color-bg-3)] text-[var(--color-ink-2)] border-[var(--color-line)]",
   accent: "bg-[var(--color-accent-dim)] text-[var(--color-accent)] border-transparent",
-  agent: "bg-[#8e86d4]/12 text-[#a79fe0] border-transparent",
-  llm: "bg-[#5b9bd5]/12 text-[#79b2e2] border-transparent",
-  tool: "bg-[#58a67e]/12 text-[#6fba92] border-transparent",
-  custom: "bg-[#c2a15a]/12 text-[#d0b273] border-transparent",
-  ok: "bg-[#5ba97e]/12 text-[#6fbb92] border-transparent",
-  warn: "bg-[#c2a15a]/12 text-[#d0b273] border-transparent",
-  bad: "bg-[#c86a62]/12 text-[#d68179] border-transparent",
+  agent: "bg-[#6d5fc4]/10 text-[#564a9f] border-transparent",
+  llm: "bg-[#2f6f9f]/10 text-[#255a83] border-transparent",
+  tool: "bg-[#3f8a63]/10 text-[#2f6e4f] border-transparent",
+  custom: "bg-[#a67c2e]/12 text-[#836021] border-transparent",
+  ok: "bg-[#3f8a63]/10 text-[#2f6e4f] border-transparent",
+  warn: "bg-[#a67c2e]/12 text-[#836021] border-transparent",
+  bad: "bg-[#b4483e]/10 text-[#93392f] border-transparent",
 };
 
 /** 方形小角，不是胶囊。胶囊标签在密集界面里太吵。 */
@@ -184,10 +184,10 @@ export function ErrorBox({ error }: { error: string | null }) {
   return (
     <div
       role="alert"
-      className="flex items-start gap-3 rounded-[var(--radius-md)] border border-[#c86a62]/30 bg-[#c86a62]/8 px-4 py-3"
+      className="flex items-start gap-3 rounded-[var(--radius-md)] border border-[#b4483e]/25 bg-[#b4483e]/[0.06] px-4 py-3"
     >
       <span className="mt-[3px] size-1.5 shrink-0 rounded-full bg-[var(--color-bad)]" />
-      <p className="text-sm leading-relaxed text-[#d99a94]">{error}</p>
+      <p className="text-sm leading-relaxed text-[#8f3830]">{error}</p>
     </div>
   );
 }
@@ -225,7 +225,7 @@ export function JsonBlock({ label, value }: { label: string; value: unknown }) {
         {open ? "▾" : "▸"} {label} · {text.length} 字符
       </button>
       {open && (
-        <pre className="mono mt-2 max-h-96 overflow-auto rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3 text-[11px] leading-relaxed text-[var(--color-ink-2)]">
+        <pre className="mono mt-2 max-h-96 overflow-auto rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg-3)] p-3 text-[11px] leading-relaxed text-[var(--color-ink-2)]">
           {text}
         </pre>
       )}

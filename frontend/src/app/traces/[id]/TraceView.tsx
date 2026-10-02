@@ -180,7 +180,7 @@ function SpanRow({
       </div>
 
       {/* 相对父 span 的时间条。tooltip 给的是它占整条 trace 的比重 */}
-      <div className="mx-2 mb-1.5 h-[3px] overflow-hidden rounded-full bg-[var(--color-line)]">
+      <div className="mx-2 mb-1.5 h-[3px] overflow-hidden rounded-full bg-[var(--color-track)]">
         <div
           className="h-full rounded-full"
           style={{
@@ -194,9 +194,9 @@ function SpanRow({
       </div>
 
       {open && (
-        <div className="mx-2 mb-2 space-y-2.5 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg)] p-3">
+        <div className="mx-2 mb-2 space-y-2.5 rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg-3)] p-3">
           {node.error && (
-            <p className="text-[12px] text-[#d68179]">{node.error}</p>
+            <p className="text-[12px] text-[#93392f]">{node.error}</p>
           )}
           <EvaluationCard node={node} />
           <JsonBlock label="attributes" value={node.attributes} />
