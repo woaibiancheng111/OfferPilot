@@ -3,7 +3,19 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { api, ApiError } from "@/lib/api";
-import type { ParseJDResponse, PlanTopic, SessionResponse, Turn } from "@/lib/types";
+import { streamSse } from "@/lib/stream";
+import type {
+  NextTurn,
+  ParseJDResponse,
+  PlanTopic,
+  QuestionEvent,
+  SessionEvent,
+  SessionResponse,
+  Turn,
+  TurnDoneEvent,
+  TurnEvaluation,
+  TurnStartEvent,
+} from "@/lib/types";
 import {
   Badge,
   Button,
@@ -33,6 +45,45 @@ const SAMPLE_RESUME = `2021-2024 XX公司 后端工程师
 
 type Stage = "jd" | "ready" | "interviewing" | "done";
 
+/** 正在流式接收中的那一轮。单独放 state，免得一收到 token 就重算整个会话。 */
+type Live = {
+  turnIndex: number;
+  topic: string;
+  evaluation: TurnEvaluation | null;
+  question: string;
+} | null;
+
+/**
+ * 把流式结果合并进会话。
+ *
+ * 服务端的 session 事件只带新出现的那一轮，已回答那轮的评估在 turn_start 里，
+ * 所以这里在前端合一次——避免为了一个增量把整个会话再拉一遍。
+ */
+function applyStream(
+  session: SessionResponse,
+  answer: string,
+  started: TurnStartEvent,
+  last: SessionEvent,
+): SessionResponse {
+  const turns: Turn[] = session.turns.map((t) =>
+    t.turn_index === started.turn_index
+      ? { ...t, answer, evaluation: started.evaluation }
+      : t,
+  );
+  const next = last.next_turn as NextTurn | null;
+  if (next) {
+    turns.push({
+      turn_index: next.turn_index,
+      topic: next.topic,
+      difficulty: next.difficulty,
+      question: next.question,
+      answer: null,
+      evaluation: null,
+    });
+  }
+  return { ...session, turns, finished: last.finished, total_tokens: last.total_tokens };
+}
+
 export default function InterviewPage() {
   const [stage, setStage] = useState<Stage>("jd");
   const [jdText, setJdText] = useState(SAMPLE_JD);
@@ -40,14 +91,19 @@ export default function InterviewPage() {
   const [userId, setUserId] = useState("tester");
   const [analysis, setAnalysis] = useState<ParseJDResponse | null>(null);
   const [session, setSession] = useState<SessionResponse | null>(null);
+  const [live, setLive] = useState<Live>(null);
   const [answer, setAnswer] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  // 卸载或「重新开始」时中断还在进行的流，否则它会在后台继续烧 token
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [session?.turns.length]);
+  }, [session?.turns.length, live?.question]);
+
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   async function run(label: string, fn: () => Promise<void>) {
     setBusy(label);
@@ -55,7 +111,9 @@ export default function InterviewPage() {
     try {
       await fn();
     } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
       setError(e instanceof ApiError ? e.message : String(e));
+      setLive(null);
     } finally {
       setBusy(null);
     }
@@ -83,16 +141,69 @@ export default function InterviewPage() {
       if (!session) return;
       const text = answer.trim();
       if (!text) return;
-      const r = await api.submitAnswer(session.session_id, text);
-      setSession(r);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
       setAnswer("");
-      if (r.finished) setStage("done");
+      setLive({ turnIndex: 0, topic: "", evaluation: null, question: "" });
+
+      let started: TurnStartEvent | null = null;
+      let done: TurnDoneEvent | null = null;
+      let last: SessionEvent | null = null;
+      let lastEventId = 0;
+      const opts = {
+        signal: controller.signal,
+        get lastEventId() {
+          return lastEventId;
+        },
+      };
+
+      const stream = streamSse(
+        `/api/interview/${session.session_id}/answer/stream`,
+        { answer: text },
+        opts,
+      );
+
+      for await (const ev of stream) {
+        lastEventId = ev.id;
+        switch (ev.event) {
+          case "turn_start": {
+            const d = ev.data as unknown as TurnStartEvent;
+            started = d;
+            setLive({ turnIndex: d.turn_index, topic: d.topic, evaluation: d.evaluation, question: "" });
+            setBusy("提问");
+            break;
+          }
+          case "question": {
+            const d = ev.data as unknown as QuestionEvent;
+            setLive((prev) => (prev ? { ...prev, question: prev.question + d.delta } : prev));
+            break;
+          }
+          case "turn_done": {
+            done = ev.data as unknown as TurnDoneEvent;
+            setLive((prev) => (prev ? { ...prev, question: done!.question } : prev));
+            break;
+          }
+          case "session":
+            last = ev.data as unknown as SessionEvent;
+            break;
+          case "error":
+            throw new Error((ev.data as { message: string }).message);
+        }
+      }
+
+      if (!started || !done || !last) throw new Error("流提前结束，没拿到完整结果");
+      setSession(applyStream(session, text, started, last));
+      setLive(null);
+      if (last.finished) setStage("done");
     });
 
   const reset = () => {
+    abortRef.current?.abort();
     setStage("jd");
     setAnalysis(null);
     setSession(null);
+    setLive(null);
     setAnswer("");
     setError(null);
   };
@@ -161,6 +272,7 @@ export default function InterviewPage() {
               {session.turns.map((t) => (
                 <TurnCard key={t.turn_index} turn={t} />
               ))}
+              {live && <LiveCard live={live} busy={busy} />}
               <div ref={bottomRef} />
             </>
           ) : (
@@ -299,8 +411,47 @@ export default function InterviewPage() {
   );
 }
 
+/**
+ * 流式接收中的那一轮。
+ *
+ * 评估先到、问题后到，所以这两个阶段是分开展示的：
+ * 等评估的那几秒先显示上一轮的打分，别让用户对着空白等待。
+ */
+function LiveCard({ live, busy }: { live: NonNullable<Live>; busy: string | null }) {
+  const streaming = live.question.length > 0;
+  return (
+    <Card as="article" className="border-[var(--color-accent)]/30">
+      <CardHeader
+        title={`第 ${live.turnIndex + 1} 轮`}
+        right={
+          busy === "提问" ? (
+            <span className="flex items-center gap-1.5 text-[11px] text-[var(--color-accent)]">
+              <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-accent)]" />
+              正在生成
+            </span>
+          ) : null
+        }
+      />
+      <div className="space-y-4 p-5">
+        {live.evaluation && <EvaluationPanel evaluation={live.evaluation} />}
+
+        {streaming ? (
+          <p className="text-[15px] leading-[1.7] text-pretty">
+            <span className="mono mr-2 text-[11px] font-semibold text-[var(--color-k-llm)]">问</span>
+            {live.question}
+            <span className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[2px] animate-pulse bg-[var(--color-accent)]" />
+          </p>
+        ) : (
+          <p className="text-sm text-[var(--color-ink-3)]">
+            {busy === "评估" ? "正在评估你上一轮的回答…" : "准备中…"}
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 function TurnCard({ turn }: { turn: Turn }) {
-  const ev = turn.evaluation;
   return (
     <Card as="article">
       <CardHeader
@@ -326,23 +477,29 @@ function TurnCard({ turn }: { turn: Turn }) {
           <p className="text-sm text-[var(--color-ink-3)]">等待回答…</p>
         )}
 
-        {ev && (
-          <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg-3)]/60 p-4">
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-              <Badge tone="accent">评估</Badge>
-              <ScoreBar label="技术深度" value={ev.technical_depth} />
-              <ScoreBar label="表达" value={ev.clarity} />
-              <ScoreBar label="有据" value={ev.evidence} />
-              <ScoreBar label="切题" value={ev.relevance} />
-            </div>
-            <p className="muted mt-3 text-[13px]">{ev.summary}</p>
-            <p className="mt-2 border-l-2 border-[var(--color-k-custom)]/40 pl-3 text-[13px] leading-relaxed text-[var(--color-ink-2)]">
-              下一步{ACTION_LABELS[ev.next_action] ?? ev.next_action} —— {ev.follow_up_reason}
-            </p>
-          </div>
-        )}
+        {turn.evaluation && <EvaluationPanel evaluation={turn.evaluation} />}
       </div>
     </Card>
+  );
+}
+
+/** 评估面板。已完成的历史轮和流式中的当前轮共用，保证两处显示一致。 */
+function EvaluationPanel({ evaluation }: { evaluation: TurnEvaluation }) {
+  return (
+    <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg-3)]/60 p-4">
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+        <Badge tone="accent">评估</Badge>
+        <ScoreBar label="技术深度" value={evaluation.technical_depth} />
+        <ScoreBar label="表达" value={evaluation.clarity} />
+        <ScoreBar label="有据" value={evaluation.evidence} />
+        <ScoreBar label="切题" value={evaluation.relevance} />
+      </div>
+      <p className="muted mt-3 text-[13px]">{evaluation.summary}</p>
+      <p className="mt-2 border-l-2 border-[var(--color-k-custom)]/40 pl-3 text-[13px] leading-relaxed text-[var(--color-ink-2)]">
+        下一步{ACTION_LABELS[evaluation.next_action] ?? evaluation.next_action} ——{" "}
+        {evaluation.follow_up_reason}
+      </p>
+    </div>
   );
 }
 

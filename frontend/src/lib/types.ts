@@ -109,3 +109,47 @@ export interface TraceDetail extends TraceSummary {
   ended_at: string | null;
   spans: SpanNode[];
 }
+
+/* ---------- 流式提交回答的事件 ---------- */
+
+/** turn_start：上一轮的评估先到，用户不用干等 */
+export interface TurnStartEvent {
+  turn_index: number;
+  topic: string;
+  evaluation: TurnEvaluation;
+}
+
+/** question：问题增量，会来很多次 */
+export interface QuestionEvent {
+  delta: string;
+}
+
+/** turn_done：本轮结束 */
+export interface TurnDoneEvent {
+  turn_index: number;
+  question: string;
+  finished: boolean;
+  input_tokens: number;
+  output_tokens: number;
+}
+
+export interface NextTurn {
+  turn_index: number;
+  question: string;
+  topic: string;
+  difficulty: Difficulty;
+}
+
+/** session：会话最终状态 */
+export interface SessionEvent {
+  session_id: string;
+  trace_id: string;
+  finished: boolean;
+  total_tokens: number;
+  next_turn: NextTurn | null;
+}
+
+/** error：服务端把异常也转成事件发出来，否则前端只能等超时 */
+export interface StreamErrorEvent {
+  message: string;
+}
