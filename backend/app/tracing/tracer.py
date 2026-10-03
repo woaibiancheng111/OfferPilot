@@ -1,6 +1,6 @@
 import functools
 import inspect
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
 from contextlib import asynccontextmanager
 from contextvars import ContextVar
 from typing import Any, ParamSpec, TypeVar
@@ -85,20 +85,24 @@ class Tracer:
         *,
         capture_input: bool = True,
         capture_output: bool = True,
-    ) -> Callable[[Callable[P, Awaitable[R]]], Callable[P, Awaitable[R]]]:
-        """装饰 async 函数，把每次调用记录为一个 span。
+    ) -> Callable[[Callable[P, Any]], Callable[P, Any]]:
+        """装饰 async 函数（或 async generator），把每次调用记录为一个 span。
 
         涉及隐私的函数（比如处理原始简历）可以关掉 capture_input/capture_output。
         """
+        span_name = name
 
-        def decorator(func: Callable[P, Awaitable[R]]) -> Callable[P, Awaitable[R]]:
-            span_name = name or func.__qualname__
+        def decorator(func: Callable[P, Any]) -> Callable[P, Any]:
+            label = span_name or func.__qualname__
+            if inspect.isasyncgenfunction(func):
+                return self._wrap_async_gen(func, kind, label, capture_input, capture_output)
+
             signature = inspect.signature(func)
 
             @functools.wraps(func)
             async def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
                 call_input = _bind_arguments(signature, args, kwargs) if capture_input else None
-                async with self.span(kind, span_name, input=call_input) as span:
+                async with self.span(kind, label, input=call_input) as span:
                     result = await func(*args, **kwargs)
                     if capture_output:
                         span.output = self.serialize(result)
@@ -107,6 +111,40 @@ class Tracer:
             return wrapper
 
         return decorator
+
+    def _wrap_async_gen(
+        self,
+        func: Callable[P, AsyncGenerator[R, None]],
+        kind: SpanKind,
+        span_name: str,
+        capture_input: bool,
+        capture_output: bool,
+    ) -> Callable[P, AsyncGenerator[R, None]]:
+        """async generator 的 span 生命周期跟着迭代走：耗尽或提前关闭时都要收尾。"""
+        signature = inspect.signature(func)
+
+        @functools.wraps(func)
+        async def wrapper(*args: P.args, **kwargs: P.kwargs) -> AsyncGenerator[R, None]:
+            call_input = _bind_arguments(signature, args, kwargs) if capture_input else None
+            collected: list[R] = []
+            async with self.span(kind, span_name, input=call_input) as span:
+                agen = func(*args, **kwargs)
+                try:
+                    async for item in agen:
+                        collected.append(item)
+                        yield item
+                finally:
+                    # 调用方 break 或客户端断连时也会走到这里，必须在这里收尾：
+                    # 写在 async with 之外的话，GeneratorExit 根本到不了。
+                    await agen.aclose()
+                    if capture_output and collected:
+                        # 流的输出通常是几十个增量，全量存会把库撑爆，只记条数和预览
+                        span.output = {
+                            "chunks": len(collected),
+                            "preview": self.serialize(collected[:20]),
+                        }
+
+        return wrapper
 
 
 def _bind_arguments(signature: inspect.Signature, args: tuple, kwargs: dict) -> dict[str, Any]:

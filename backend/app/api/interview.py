@@ -3,13 +3,18 @@
 只做三件事：校验入参 → 调用例 → 返回。状态机和三个 agent 的编排在 service 层。
 """
 
-from fastapi import APIRouter, HTTPException
+from collections.abc import AsyncIterator
+from typing import Annotated
+
+from fastapi import APIRouter, Header, HTTPException
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.agents.evaluator import EvaluationError
 from app.agents.interviewer import InterviewError
 from app.agents.planner import PlanError
 from app.api.errors import http_error_for_llm
+from app.api.sse import Event, ReplayStore, with_replay
 from app.deps import LLMDep, SessionFactoryDep
 from app.llm.errors import LLMError
 from app.schemas.interview import InterviewPlan, TurnEvaluation
@@ -19,6 +24,7 @@ from app.services.interview_service import (
     SessionView,
     start_session,
     submit_answer,
+    submit_answer_stream,
 )
 
 router = APIRouter(prefix="/api/interview", tags=["interview"])
@@ -107,3 +113,49 @@ async def answer(
     except LLMError as e:
         raise http_error_for_llm(e) from e
     return _out(view)
+
+
+@router.post("/{session_id}/answer/stream")
+async def answer_stream(
+    session_id: str,
+    body: AnswerRequest,
+    llm: LLMDep,
+    sessions: SessionFactoryDep,
+    last_event_id: Annotated[int, Header(alias="Last-Event-ID")] = 0,
+) -> StreamingResponse:
+    """流式提交回答。
+
+    断线重连时带 ``Last-Event-ID``，服务端把漏掉的片段补回来再接着推。
+    续传缓冲在进程内存里（见 sse.py），接 Redis 只需替换 ReplayStore。
+    """
+    store = _replay_store_for(session_id)
+
+    async def produce() -> AsyncIterator[Event]:
+        try:
+            async for raw in submit_answer_stream(
+                llm, session_id, body.answer, session_factory=sessions
+            ):
+                yield store.emit(raw["event"], raw["data"])
+        except Exception as exc:  # noqa: BLE001
+            # 错误也要以事件形式发出去，否则前端只能干等到超时
+            yield store.emit("error", {"message": str(exc)})
+
+    return StreamingResponse(
+        with_replay(produce(), store, last_event_id),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            # Nginx 必须放开缓冲，否则流式会被攒成一次性返回
+            "X-Accel-Buffering": "no",
+        },
+    )
+
+
+# 同一场面试的多次重连共用一个缓冲，按 session 分桶。接 Redis 时换成
+# "session_id -> redis key" 的实现即可，上面的 SSE 逻辑一行不用改。
+_REPLAY_STORES: dict[str, ReplayStore] = {}
+
+
+def _replay_store_for(session_id: str) -> ReplayStore:
+    return _REPLAY_STORES.setdefault(session_id, ReplayStore())

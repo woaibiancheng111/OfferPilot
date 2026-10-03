@@ -4,6 +4,8 @@ Agent 层只认这里的类型，各厂商的适配器负责双向转换，
 这样切换模型或做模型路由时，Agent 代码不用改。
 """
 
+import asyncio
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
@@ -88,3 +90,67 @@ class LLMClient(Protocol):
         tool_choice: ToolChoice = "auto",
         prompt_version: str | None = None,
     ) -> LLMResponse: ...
+
+    def stream_chat(
+        self,
+        messages: list[Message],
+        *,
+        system: str | None = None,
+        prompt_version: str | None = None,
+    ) -> "TextStream":
+        """流式出字。
+
+        目前只支持「不带工具、纯文本」这一种情况——面试官的提问就是这种。
+        需要工具调用的路径继续走 ``chat``，不硬塞进流式。
+        """
+        ...
+
+
+class TextStream:
+    """文本流：迭代拿到增量，同时在迭代结束后读到完整文本和用量。
+
+    不用「async generator + return value」是因为拿不到返回值；也不让调用方
+    自己拼字符串——那样每个调用点都要重复累加逻辑，容易漏。
+    """
+
+    def __init__(self) -> None:
+        self._chunks: list[str] = []
+        self._text = ""
+        self._usage = Usage()
+        self._stop_reason: StopReason = "other"
+        self._model = ""
+
+    async def push(self, delta: str) -> None:
+        """由 provider 在收到增量时调用。"""
+        if not delta:
+            return
+        self._chunks.append(delta)
+        self._text += delta
+
+    def finish(self, *, model: str, stop_reason: StopReason, usage: Usage) -> None:
+        """流结束时由 provider 调用，补上只在末尾才拿得到的元信息。"""
+        self._model = model
+        self._stop_reason = stop_reason
+        self._usage = usage
+
+    async def __aiter__(self) -> AsyncIterator[str]:
+        for chunk in self._chunks:
+            yield chunk
+            # 让出事件循环，避免一次性吐完把请求饿死
+            await asyncio.sleep(0)
+
+    @property
+    def text(self) -> str:
+        return self._text
+
+    @property
+    def usage(self) -> Usage:
+        return self._usage
+
+    @property
+    def stop_reason(self) -> StopReason:
+        return self._stop_reason
+
+    @property
+    def model(self) -> str:
+        return self._model

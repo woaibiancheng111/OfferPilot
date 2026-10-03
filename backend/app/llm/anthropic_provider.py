@@ -1,3 +1,4 @@
+from collections.abc import AsyncIterator
 from typing import Any
 
 import anthropic
@@ -7,6 +8,7 @@ from app.llm.base import (
     LLMResponse,
     Message,
     StopReason,
+    TextStream,
     ToolCall,
     ToolChoice,
     ToolResultsMessage,
@@ -52,6 +54,52 @@ class AnthropicLLM:
         self.enable_fallbacks = enable_fallbacks
         self.enable_prompt_cache = enable_prompt_cache
         self.client = client or anthropic.AsyncAnthropic()
+
+    @trace_span(kind="llm", name="anthropic.stream")
+    async def stream_chat(
+        self,
+        messages: list[Message],
+        *,
+        system: str | None = None,
+        prompt_version: str | None = None,
+    ) -> AsyncIterator[str]:
+        """流式出字，只支持不带工具的纯文本场景。"""
+        params: dict[str, Any] = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "messages": [_to_anthropic_message(m) for m in messages],
+        }
+        if system:
+            params["system"] = system
+
+        stream = TextStream()
+        async with self.client.messages.stream(**params) as active:
+            async for delta in active.text_stream:
+                await stream.push(delta)
+                yield delta
+            # usage 和 stop_reason 只在流结束时才拿得到
+            final = await active.get_final_message()
+
+        raw = final.usage
+        usage = Usage(
+            input_tokens=raw.input_tokens,
+            output_tokens=raw.output_tokens,
+            cache_read_tokens=getattr(raw, "cache_read_input_tokens", None) or 0,
+            cache_write_tokens=getattr(raw, "cache_creation_input_tokens", None) or 0,
+        )
+        stream.finish(
+            model=final.model,
+            stop_reason=_STOP_REASONS.get(final.stop_reason or "", "other"),
+            usage=usage,
+        )
+        record_llm_usage(
+            model=stream.model,
+            input_tokens=usage.input_tokens
+            + usage.cache_read_tokens
+            + usage.cache_write_tokens,
+            output_tokens=usage.output_tokens,
+            prompt_version=prompt_version,
+        )
 
     @trace_span(kind="llm", name="anthropic.chat")
     async def chat(

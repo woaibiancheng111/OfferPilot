@@ -14,6 +14,7 @@ cached_tokens 加一遍，否则 trace 里的 token 数会翻倍。
 import hashlib
 import json
 import logging
+from collections.abc import AsyncIterator
 from typing import Any
 
 import openai
@@ -23,6 +24,7 @@ from app.llm.base import (
     LLMResponse,
     Message,
     StopReason,
+    TextStream,
     ToolCall,
     ToolChoice,
     ToolResultsMessage,
@@ -68,6 +70,71 @@ class OpenAILLM:
         self.enable_prompt_cache = enable_prompt_cache
         self.legacy_max_tokens = legacy_max_tokens
         self.client = client or openai.AsyncOpenAI()
+
+    @trace_span(kind="llm", name="openai.stream")
+    async def stream_chat(
+        self,
+        messages: list[Message],
+        *,
+        system: str | None = None,
+        prompt_version: str | None = None,
+    ) -> AsyncIterator[str]:
+        """流式出字，只支持不带工具的纯文本场景。"""
+        params: dict[str, Any] = {
+            "model": self.model,
+            "messages": _to_openai_messages(messages, system),
+            "stream": True,
+            # 不显式要 usage 的话，流式响应里根本没有 token 数
+            "stream_options": {"include_usage": True},
+        }
+        if self.legacy_max_tokens:
+            params["max_tokens"] = self.max_tokens
+        else:
+            params["max_completion_tokens"] = self.max_tokens
+
+        stream = TextStream()
+        finish_reason = ""
+        usage = Usage()
+
+        active = None
+        try:
+            active = await self.client.chat.completions.create(**params)
+        except openai.BadRequestError:
+            # 不是所有第三方端点都认 stream_options，去掉重试一次。
+            # 代价是这条流拿不到 token 数，trace 里会是 0。
+            params.pop("stream_options", None)
+            active = await self.client.chat.completions.create(**params)
+            logger.warning("%s 的端点不支持 stream_options，本次流式没有 token 统计", self.model)
+
+        async with active as chunks:
+            async for chunk in chunks:
+                if not chunk.choices:
+                    # 最后一个只带 usage 的分片
+                    if chunk.usage:
+                        usage = _usage_from_openai(chunk.usage)
+                    continue
+                choice = chunk.choices[0]
+                if choice.finish_reason:
+                    finish_reason = choice.finish_reason
+                delta = choice.delta.content
+                if delta:
+                    await stream.push(delta)
+                    yield delta
+                if chunk.usage:
+                    usage = _usage_from_openai(chunk.usage)
+
+        stream.finish(
+            model=self.model,
+            stop_reason=_FINISH_REASONS.get(finish_reason, "other"),
+            usage=usage,
+        )
+        record_llm_usage(
+            model=stream.model,
+            # prompt_tokens 已含缓存命中的部分，这里不能重复加
+            input_tokens=usage.input_tokens,
+            output_tokens=usage.output_tokens,
+            prompt_version=prompt_version,
+        )
 
     @trace_span(kind="llm", name="openai.chat")
     async def chat(
@@ -152,6 +219,19 @@ def _to_openai_messages(messages: list[Message], system: str | None) -> list[dic
     return out
 
 
+def _usage_from_openai(raw: Any) -> Usage:
+    """OpenAI 的 usage 口径：prompt_tokens 已包含缓存命中的部分。"""
+    cached = 0
+    details = getattr(raw, "prompt_tokens_details", None)
+    if details is not None:
+        cached = getattr(details, "cached_tokens", None) or 0
+    return Usage(
+        input_tokens=raw.prompt_tokens,
+        output_tokens=raw.completion_tokens,
+        cache_read_tokens=cached,
+    )
+
+
 def _to_openai_tool(tool: ToolSpec) -> dict[str, Any]:
     return {
         "type": "function",
@@ -195,16 +275,7 @@ def _from_openai_response(response: Any) -> LLMResponse:
     ]
 
     raw_usage = response.usage
-    cached = 0
-    details = getattr(raw_usage, "prompt_tokens_details", None)
-    if details is not None:
-        cached = getattr(details, "cached_tokens", None) or 0
-    usage = Usage(
-        input_tokens=raw_usage.prompt_tokens,
-        output_tokens=raw_usage.completion_tokens,
-        # prompt_tokens 里已经含了缓存命中，缓存写费 OpenAI 不单独收
-        cache_read_tokens=cached,
-    )
+    usage = _usage_from_openai(raw_usage)
 
     return LLMResponse(
         message=AssistantMessage(text=message.content or "", tool_calls=tool_calls),

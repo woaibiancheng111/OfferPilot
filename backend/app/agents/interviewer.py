@@ -8,11 +8,14 @@
 这是三个 agent 里唯一不产出结构化输出的——它是唯一面向用户说话的。
 """
 
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 from app.agents.loop import AgentConfig, run_agent
+from app.agents.prompts import version_of
 from app.llm.base import LLMClient, Message, Usage, UserMessage
 from app.schemas.interview import InterviewPlan, PlanTopic, TurnEvaluation
+from app.tracing import current_span, trace_span
 
 INTERVIEWER_SYSTEM = """你是一位技术面试官，正在对候选人做一场模拟面试。
 
@@ -87,9 +90,75 @@ async def ask_question(
     name: str = "interviewer_agent",
 ) -> Question:
     config = config or InterviewerConfig()
-    block = _format_previous(previous_question or "", previous_answer or "", previous_evaluation)
+    instruction = _instruction(
+        plan, topic, turn_index, previous_question, previous_answer, previous_evaluation
+    )
+    messages = [*history, UserMessage(instruction)]
 
-    instruction = (
+    result = await run_agent(
+        llm, messages, system=INTERVIEWER_SYSTEM, config=config.agent, name=name
+    )
+
+    text = result.text.strip()
+    if not text:
+        raise InterviewError("面试官没有给出问题")
+    return Question(text=text, usage=result.usage)
+
+
+@trace_span(kind="agent", name="interviewer_agent")
+async def ask_question_stream(
+    llm: LLMClient,
+    plan: InterviewPlan,
+    topic: PlanTopic,
+    *,
+    turn_index: int,
+    history: list[Message],
+    previous_question: str | None = None,
+    previous_answer: str | None = None,
+    previous_evaluation: TurnEvaluation | None = None,
+    name: str = "interviewer_agent",
+) -> AsyncIterator[str]:
+    """和 :func:`ask_question` 同一套 prompt，但问题逐段吐出来。
+
+    每轮 9-11 秒的等待里什么都不显示，用户会以为卡死了；流式把这段变成
+    「看着问题被写出来」。评估结果一样要等——它依赖上一轮的回答，没法提前。
+    """
+    span = current_span()
+    if span is not None:
+        span.prompt_version = version_of(INTERVIEWER_SYSTEM)
+
+    instruction = _instruction(
+        plan, topic, turn_index, previous_question, previous_answer, previous_evaluation
+    )
+    messages = [*history, UserMessage(instruction)]
+
+    # stream_chat 是个 async generator（被 trace_span 包过），只给增量；
+    # 完整文本自己累加，不去依赖它的内部状态。
+    parts: list[str] = []
+    async for delta in llm.stream_chat(messages, system=INTERVIEWER_SYSTEM):
+        if not delta:
+            continue
+        parts.append(delta)
+        yield delta
+
+    text = "".join(parts).strip()
+    if not text:
+        raise InterviewError("面试官没有给出问题")
+    if span is not None:
+        span.output = {"text": text}
+        span.attributes.update(stop_reason="completed")
+
+
+def _instruction(
+    plan: InterviewPlan,
+    topic: PlanTopic,
+    turn_index: int,
+    previous_question: str | None,
+    previous_answer: str | None,
+    previous_evaluation: TurnEvaluation | None,
+) -> str:
+    block = _format_previous(previous_question or "", previous_answer or "", previous_evaluation)
+    return (
         f"<interview_state>\n"
         f"当前考察点：{topic.topic}（难度：{topic.difficulty}）\n"
         f"为什么问它：{topic.why}\n"
@@ -99,19 +168,6 @@ async def ask_question(
         f"</interview_state>\n\n"
         f"如果上面有上一轮的内容，请据此调整你的提问。现在请直接说出你要问的问题。"
     )
-
-    result = await run_agent(
-        llm,
-        [*history, UserMessage(instruction)],
-        system=INTERVIEWER_SYSTEM,
-        config=config.agent,
-        name=name,
-    )
-
-    text = result.text.strip()
-    if not text:
-        raise InterviewError("面试官没有给出问题")
-    return Question(text=text, usage=result.usage)
 
 
 __all__ = [
