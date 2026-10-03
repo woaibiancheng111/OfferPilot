@@ -21,11 +21,9 @@ import {
   Button,
   Card,
   CardHeader,
-  EmptyState,
   ErrorBox,
   PageHeader,
-  ScoreBar,
-  Stat,
+  ScoreMeter,
   TraceLink,
 } from "@/components/ui";
 
@@ -227,39 +225,41 @@ export default function InterviewPage() {
         }
       />
 
-      <div
-        className={
-          hasSidebar
-            ? "grid gap-6 lg:grid-cols-[minmax(0,1.7fr)_minmax(0,1fr)] lg:items-start"
-            // Tailwind 4 的 max-w-* 走的是 spacing scale，max-w-3xl 不再等于 48rem
-          : "mx-auto max-w-[48rem]"
-        }
-      >
-        {/* ---------- 主列：对话 ---------- */}
-        <div className="order-2 space-y-5 lg:order-1">
+      {/*
+        始终双栏。窄列居中会在两侧留出大片空白，页面看起来像没做完；
+        右栏在解析前先承担流程说明，开始后再换成大纲和设置。
+      */}
+      <div className="grid gap-8 lg:grid-cols-[minmax(0,1.6fr)_minmax(0,0.95fr)] lg:items-start lg:gap-12">
+        {/* ---------- 主列：面试记录 ---------- */}
+        <div className="order-2 space-y-6 lg:order-1">
           <ErrorBox error={error} />
 
           {!inInterview && (
             <Card>
               <CardHeader
                 title="职位描述"
-                hint={analysis ? `${analysis.attempts} 次尝试` : undefined}
+                hint={analysis ? `已解析 ${analysis.attempts} 次` : undefined}
               />
-              <div className="p-5">
-                <textarea
-                  value={jdText}
-                  onChange={(e) => setJdText(e.target.value)}
-                  rows={7}
-                  placeholder="粘贴 JD 原文"
-                  className="w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg-3)] p-3.5 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-accent)] focus:bg-[var(--color-bg-2)]"
-                />
-                <div className="mt-3 flex flex-wrap items-center gap-3">
+              <div className="p-6">
+                <Field className="min-h-[16rem]">
+                  <textarea
+                    value={jdText}
+                    onChange={(e) => setJdText(e.target.value)}
+                    rows={11}
+                    placeholder="粘贴 JD 原文"
+                    className={TEXTAREA}
+                  />
+                </Field>
+                <div className="mt-5 flex flex-wrap items-center gap-4">
                   <Button onClick={onParse} disabled={!!busy || jdText.trim().length < 10}>
-                    {busy === "解析" ? "解析中，约 5 秒…" : analysis ? "重新解析" : "解析 JD"}
+                    {busy === "解析" ? "解析中，约 5 秒" : analysis ? "重新解析" : "解析 JD"}
                   </Button>
                   {analysis && (
-                    <span className="text-xs text-[var(--color-ink-3)]">
-                      <TraceLink id={analysis.trace_id} /> · {analysis.input_tokens + analysis.output_tokens} tokens
+                    <span className="flex items-center gap-2 text-[12.5px] text-ink-3">
+                      <TraceLink id={analysis.trace_id} />
+                      <span className="mono">
+                        {(analysis.input_tokens + analysis.output_tokens).toLocaleString()} tokens
+                      </span>
                     </span>
                   )}
                 </div>
@@ -267,41 +267,40 @@ export default function InterviewPage() {
             </Card>
           )}
 
-          {session ? (
+          {session && (
             <>
-              {session.turns.map((t) => (
-                <TurnCard key={t.turn_index} turn={t} />
-              ))}
-              {live && <LiveCard live={live} busy={busy} />}
+              {/*
+                一条连续的时间轴，而不是一轮一张卡片。轮次本身就是序列，
+                所以左边的轴和节点在编码真实信息，不是装饰。
+              */}
+              <ol className="animate-rise">
+                {session.turns.map((t, i) => (
+                  <TurnEntry key={t.turn_index} turn={t} isLast={i === session.turns.length - 1 && !live} />
+                ))}
+                {live && <LiveEntry live={live} busy={busy} isLast />}
+              </ol>
               <div ref={bottomRef} />
             </>
-          ) : (
-            !analysis && (
-              <EmptyState
-                title="还没有开始"
-                hint="先解析一份 JD。解析结果会决定面试问什么，所以别急着跳过。"
-              />
-            )
           )}
 
           {session && stage !== "done" && pending && (
             <Card>
-              <CardHeader title={`第 ${pending.turn_index + 1} 轮 · 你的回答`} />
-              <div className="p-5">
-                <textarea
-                  value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
-                  rows={5}
-                  placeholder="按你真实的面试状态回答，不用追求好看"
-                  className="w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg-3)] p-3.5 text-sm leading-relaxed outline-none transition-colors placeholder:text-[var(--color-ink-3)] focus:border-[var(--color-accent)] focus:bg-[var(--color-bg-2)]"
-                />
-                <div className="mt-3 flex flex-wrap items-center gap-3">
+              <CardHeader title={`第 ${pending.turn_index + 1} 轮，你的回答`} />
+              <div className="p-6">
+                <Field className="min-h-[8rem]">
+                  <textarea
+                    value={answer}
+                    onChange={(e) => setAnswer(e.target.value)}
+                    rows={5}
+                    placeholder="按你真实的面试状态回答，不用追求好看"
+                    className={TEXTAREA}
+                  />
+                </Field>
+                <div className="mt-5 flex flex-wrap items-center gap-4">
                   <Button onClick={onAnswer} disabled={!!busy || !answer.trim()}>
-                    {busy === "评估" ? "评估中，约 10 秒…" : "提交回答"}
+                    {busy === "评估" ? "评估中，约 10 秒" : "提交回答"}
                   </Button>
-                  <span className="text-xs text-[var(--color-ink-3)]">
-                    会先跑评估 Agent，再据此决定下一题
-                  </span>
+                  <span className="text-[12.5px] text-ink-3">先跑评估 Agent，再据此决定下一题</span>
                 </div>
               </div>
             </Card>
@@ -309,105 +308,263 @@ export default function InterviewPage() {
 
           {stage === "done" && session && (
             <Card>
-              <div className="p-5">
-                <p className="text-sm font-medium">面试结束</p>
-                <p className="muted mt-1 text-sm">
-                  共 {session.turns.length} 轮，累计 {session.total_tokens} tokens。
+              <div className="p-6">
+                <p className="text-[16px] font-semibold text-ink">面试结束</p>
+                <p className="mt-2 text-[14px] leading-[1.65] text-ink-2">
+                  共 {session.turns.length} 轮，累计 {session.total_tokens.toLocaleString()} tokens。
                 </p>
-                <p className="mt-3">
-                  <Link
-                    href={`/traces/${session.trace_id}`}
-                    className="text-xs text-[var(--color-ink-3)] transition-colors hover:text-[var(--color-accent)]"
-                  >
-                    看最后这一轮的调用树 →
-                  </Link>
-                </p>
+                <Link
+                  href={`/traces/${session.trace_id}`}
+                  className="mt-5 inline-flex items-center gap-2 text-[13.5px] text-ink-2 transition-colors hover:text-accent"
+                >
+                  <span className="mono rounded-xs bg-surface-2 px-1.5 py-0.5 text-[11.5px] text-ink-3">
+                    {session.trace_id.slice(0, 8)}
+                  </span>
+                  看最后一轮的调用树
+                </Link>
               </div>
             </Card>
           )}
         </div>
 
-        {/* ---------- 侧栏：静态资料 ---------- */}
-        {hasSidebar && (
-        <aside className="order-1 space-y-5 lg:order-2 lg:sticky lg:top-20">
-          {analysis && (
-            <Card>
-              <CardHeader title="JD 解析" />
-              <div className="space-y-4 p-5">
-                <dl className="space-y-3 text-sm">
-                  <Field label="岗位">{analysis.role_title ?? "—"}</Field>
-                  <Field label="职级依据">{analysis.seniority_reason}</Field>
-                  <Field label="业务方向">{analysis.business_domain ?? "—"}</Field>
-                </dl>
-                <div className="space-y-2.5 border-t border-[var(--color-line)] pt-4">
-                  <TagRow label="硬性要求" items={analysis.skills_required} tone="accent" />
-                  <TagRow label="加分项" items={analysis.skills_nice_to_have} />
-                  <TagRow label="关键词" items={analysis.keywords} />
-                </div>
-              </div>
-            </Card>
-          )}
-
-          {stage === "ready" && !session && (
-            <Card>
-              <CardHeader title="开始面试" />
-              <div className="space-y-4 p-5">
-                <label className="block">
-                  <span className="label">用户 ID</span>
-                  <input
-                    value={userId}
-                    onChange={(e) => setUserId(e.target.value)}
-                    className="mono mt-1.5 w-full rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg-3)] px-3 py-2 text-sm outline-none transition-colors focus:border-[var(--color-accent)] focus:bg-[var(--color-bg-2)]"
-                  />
-                </label>
-                <label className="block">
-                  <span className="label">简历（可选）</span>
-                  <span className="mt-1.5 block text-[11px] leading-relaxed text-[var(--color-ink-3)]">
-                    只进 prompt，不落库
-                  </span>
-                  <textarea
-                    value={resumeText}
-                    onChange={(e) => setResumeText(e.target.value)}
-                    rows={4}
-                    className="mt-1.5 w-full resize-y rounded-[var(--radius-sm)] border border-[var(--color-line)] bg-[var(--color-bg-3)] p-3 text-sm leading-relaxed outline-none transition-colors focus:border-[var(--color-accent)] focus:bg-[var(--color-bg-2)]"
-                  />
-                </label>
-                <Button onClick={onStart} disabled={!!busy} className="w-full">
-                  {busy === "规划" ? "规划中，8-15 秒…" : "开始面试"}
-                </Button>
-              </div>
-            </Card>
-          )}
-
-          {session && (
-            <>
-              <div className="grid grid-cols-2 gap-3">
-                <Stat label="轮次" value={`${session.turns.length}`} />
-                <Stat label="tokens" value={`${session.total_tokens}`} />
-              </div>
-
-              <Card>
-                <CardHeader title="面试大纲" hint={`${session.plan.topics.length} 个考察点`} />
-                <ol className="space-y-3 p-5">
-                  {session.plan.topics.map((t, i) => (
-                    <TopicRow key={i} index={i} topic={t} active={pending?.topic === t.topic} />
-                  ))}
-                </ol>
-                {session.plan.focus_points.length > 0 && (
-                  <div className="border-t border-[var(--color-line)] px-5 py-4">
-                    <span className="label">重点验证</span>
-                    <p className="mt-1.5 text-[13px] leading-relaxed text-[var(--color-ink-2)]">
-                      {session.plan.focus_points.join("、")}
-                    </p>
+        {/* ---------- 侧栏：一个面板，内部用发丝线分段 ---------- */}
+        <aside className="order-1 lg:order-2 lg:sticky lg:top-24">
+          {!hasSidebar ? (
+            <FlowPanel />
+          ) : (
+            <Card as="div" className="overflow-hidden">
+              {analysis && (
+                <SideSection title="JD 解析">
+                  <dl className="space-y-4">
+                    <Field label="岗位">{analysis.role_title ?? "—"}</Field>
+                    <Field label="职级依据">{analysis.seniority_reason}</Field>
+                    <Field label="业务方向">{analysis.business_domain ?? "—"}</Field>
+                  </dl>
+                  <div className="mt-5 space-y-3">
+                    <TagRow label="硬性要求" items={analysis.skills_required} tone="accent" />
+                    <TagRow label="加分项" items={analysis.skills_nice_to_have} />
+                    <TagRow label="关键词" items={analysis.keywords} />
                   </div>
-                )}
-              </Card>
-            </>
+                </SideSection>
+              )}
+
+              {stage === "ready" && !session && (
+                <SideSection title="开始面试">
+                  <div className="space-y-5">
+                    <label className="block">
+                      <span className="label">用户 ID</span>
+                      <input
+                        value={userId}
+                        onChange={(e) => setUserId(e.target.value)}
+                        className={INPUT}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="label">简历，可选</span>
+                      <textarea
+                        value={resumeText}
+                        onChange={(e) => setResumeText(e.target.value)}
+                        rows={4}
+                        className={`${INPUT} mt-2 resize-y leading-[1.7]`}
+                      />
+                      <span className="mt-2 block text-[12px] leading-[1.6] text-ink-3">
+                        只进 prompt，不落库
+                      </span>
+                    </label>
+                    <Button onClick={onStart} disabled={!!busy} className="w-full">
+                      {busy === "规划" ? "规划中，8 到 15 秒" : "开始面试"}
+                    </Button>
+                  </div>
+                </SideSection>
+              )}
+
+              {session && (
+                <>
+                  <div className="grid grid-cols-2 divide-x divide-line border-b border-line">
+                    <Cell label="轮次" value={String(session.turns.length)} />
+                    <Cell label="tokens" value={session.total_tokens.toLocaleString()} />
+                  </div>
+
+                  <SideSection title="面试大纲" hint={`${session.plan.topics.length} 个考察点`}>
+                    <ol className="space-y-4">
+                      {session.plan.topics.map((t, i) => (
+                        <TopicRow key={i} index={i} topic={t} active={pending?.topic === t.topic} />
+                      ))}
+                    </ol>
+                    {session.plan.focus_points.length > 0 && (
+                      <div className="mt-5 border-t border-line pt-4">
+                        <span className="label">重点验证</span>
+                        <p className="mt-2 text-[13.5px] leading-[1.65] text-ink-2">
+                          {session.plan.focus_points.join("、")}
+                        </p>
+                      </div>
+                    )}
+                  </SideSection>
+                </>
+              )}
+            </Card>
           )}
         </aside>
-        )}
       </div>
     </>
+  );
+}
+
+const TEXTAREA =
+  "w-full resize-y rounded-md border border-line bg-surface-2 px-4 py-3.5 text-[15px] leading-[1.7] " +
+  "text-ink outline-none transition-colors duration-150 placeholder:text-ink-3 " +
+  "hover:border-line-2 focus:border-accent/60 focus:bg-surface-3";
+
+const INPUT =
+  "mono mt-2 w-full rounded-md border border-line bg-surface-2 px-3.5 py-2.5 text-[14px] text-ink " +
+  "outline-none transition-colors duration-150 placeholder:text-ink-3 focus:border-accent/60 focus:bg-surface-3";
+
+/* ---------- 侧栏 ---------- */
+
+const STEPS = [
+  {
+    title: "解析 JD",
+    body: "抽出岗位、职级依据、硬性要求和关键词。这份结果决定后面问什么。",
+  },
+  {
+    title: "确认面试大纲",
+    body: "按考察点排出轮次，标明每个点为什么被选中，开始前可以先过一眼。",
+  },
+  {
+    title: "逐轮问答",
+    body: "回答后先出评估，再据此决定下一题，问题会跟着你的回答走。",
+  },
+];
+
+const OUTPUTS = [
+  "四个维度的打分和一段总结",
+  "下一步打算追问还是换题，以及理由",
+  "每一步的调用树、耗时和 token",
+];
+
+/**
+ * 解析之前的右栏。
+ *
+ * 这里原本是空的，下面还挂一个大号空状态框，整页看着像没做完。
+ * 换成讲清楚流程和产出：第一次来的人需要知道解析完会发生什么，
+ * 右栏也就不是硬凑出来的第二列。
+ */
+function FlowPanel() {
+  return (
+    <Card as="div" className="overflow-hidden">
+      <SideSection title="流程">
+        {/* 编号在这里是真的：这三步有先后，不是随便排的装饰项 */}
+        <ol className="space-y-5">
+          {STEPS.map((s, i) => (
+            <li key={s.title} className="flex gap-3.5">
+              <span className="num w-4 shrink-0 pt-[3px] text-[12.5px] text-ink-3">{i + 1}</span>
+              <div>
+                <p className="text-[13.5px] font-medium text-ink">{s.title}</p>
+                <p className="mt-1.5 text-[12.5px] leading-[1.65] text-ink-3">{s.body}</p>
+              </div>
+            </li>
+          ))}
+        </ol>
+      </SideSection>
+
+      <SideSection title="每轮会给什么">
+        <ul className="space-y-3">
+          {OUTPUTS.map((o) => (
+            <li key={o} className="flex gap-2.5 text-[13.5px] leading-[1.6] text-ink-2">
+              <span className="mt-[7px] size-[5px] shrink-0 rotate-45 bg-accent-solid" aria-hidden />
+              {o}
+            </li>
+          ))}
+        </ul>
+      </SideSection>
+    </Card>
+  );
+}
+
+function SideSection({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="border-b border-line px-6 py-5 last:border-b-0">
+      <div className="mb-4 flex items-baseline gap-2.5">
+        <h2 className="text-[14px] font-semibold text-ink">{title}</h2>
+        {hint && <span className="text-[12.5px] text-ink-3">{hint}</span>}
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function Cell({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="px-6 py-4">
+      <div className="num text-[22px] font-semibold leading-none text-ink">{value}</div>
+      <div className="mt-2 text-[12.5px] text-ink-3">{label}</div>
+    </div>
+  );
+}
+
+function TopicRow({ index, topic, active }: { index: number; topic: PlanTopic; active: boolean }) {
+  return (
+    <li className="flex gap-3">
+      <span
+        className={
+          "num mt-[1px] w-4 shrink-0 text-[12.5px] " +
+          (active ? "text-accent" : "text-ink-3")
+        }
+      >
+        {index + 1}
+      </span>
+      <div className={active ? "text-ink" : ""}>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-[13.5px] font-medium">{topic.topic}</span>
+          {active && <Badge tone="accent">进行中</Badge>}
+          <span className="text-[12px] text-ink-3">{topic.difficulty}</span>
+        </div>
+        <p className="mt-1.5 text-[12.5px] leading-[1.6] text-ink-3">{topic.why}</p>
+      </div>
+    </li>
+  );
+}
+
+/* ---------- 时间轴 ---------- */
+
+function TurnEntry({ turn, isLast }: { turn: Turn; isLast: boolean }) {
+  return (
+    <li className="relative pb-11 last:pb-0">
+      {!isLast && <span aria-hidden className="absolute bottom-0 left-[15px] top-[12px] w-px bg-line" />}
+      <Node tone={turn.answer ? "done" : "pending"} />
+
+      <div className="flex h-6 items-center gap-3 pl-12">
+        <span className="num absolute left-0 top-[3px] text-[12.5px] text-ink-3">
+          {String(turn.turn_index + 1).padStart(2, "0")}
+        </span>
+        <span className="text-[13.5px] text-ink-2">{turn.topic}</span>
+        <Badge>{turn.difficulty}</Badge>
+      </div>
+
+      <div className="mt-5 space-y-5 pl-12">
+        <Speech who="面试官" tone="ask">
+          {turn.question}
+        </Speech>
+
+        {turn.answer ? (
+          <Speech who="你" tone="answer">
+            {turn.answer}
+          </Speech>
+        ) : (
+          <p className="text-[14px] text-ink-3">等你的回答</p>
+        )}
+
+        {turn.evaluation && <EvaluationPanel evaluation={turn.evaluation} />}
+      </div>
+    </li>
   );
 }
 
@@ -417,91 +574,92 @@ export default function InterviewPage() {
  * 评估先到、问题后到，所以这两个阶段是分开展示的：
  * 等评估的那几秒先显示上一轮的打分，别让用户对着空白等待。
  */
-function LiveCard({ live, busy }: { live: NonNullable<Live>; busy: string | null }) {
+function LiveEntry({
+  live,
+  busy,
+  isLast,
+}: {
+  live: NonNullable<Live>;
+  busy: string | null;
+  isLast: boolean;
+}) {
   const streaming = live.question.length > 0;
   return (
-    <Card as="article" className="border-[var(--color-accent)]/30">
-      <CardHeader
-        title={`第 ${live.turnIndex + 1} 轮`}
-        right={
-          busy === "提问" ? (
-            <span className="flex items-center gap-1.5 text-[11px] text-[var(--color-accent)]">
-              <span className="size-1.5 animate-pulse rounded-full bg-[var(--color-accent)]" />
-              正在生成
-            </span>
-          ) : null
-        }
-      />
-      <div className="space-y-4 p-5">
-        {live.evaluation && <EvaluationPanel evaluation={live.evaluation} />}
+    <li className="relative pb-11 last:pb-0">
+      {!isLast && <span aria-hidden className="absolute bottom-0 left-[15px] top-[12px] w-px bg-line" />}
+      <Node tone="live" />
+
+      <div className="flex h-6 items-center gap-3 pl-12">
+        <span className="num absolute left-0 top-[3px] text-[12.5px] text-accent">
+          {String(live.turnIndex + 1).padStart(2, "0")}
+        </span>
+        {live.topic && <span className="text-[13.5px] text-ink-2">{live.topic}</span>}
+        <span className="relative ml-auto flex items-center gap-2 overflow-hidden text-[12px] text-accent">
+          <span className="size-[6px] shrink-0 animate-pulse rounded-full bg-accent" />
+          正在生成
+        </span>
+      </div>
+
+      <div className="mt-5 space-y-5 pl-12">
+        {live.evaluation && <EvaluationPanel evaluation={live.evaluation} delay={0} />}
 
         {streaming ? (
-          <p className="text-[15px] leading-[1.7] text-pretty">
-            <span className="mono mr-2 text-[11px] font-semibold text-[var(--color-k-llm)]">问</span>
+          <Speech who="面试官" tone="ask">
             {live.question}
-            <span className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[2px] animate-pulse bg-[var(--color-accent)]" />
-          </p>
+            <span className="ml-0.5 inline-block h-[1.05em] w-[2px] translate-y-[2px] animate-pulse bg-accent" />
+          </Speech>
         ) : (
-          <p className="text-sm text-[var(--color-ink-3)]">
-            {busy === "评估" ? "正在评估你上一轮的回答…" : "准备中…"}
+          <p className="text-[14px] text-ink-3">
+            {busy === "评估" ? "正在评估你上一轮的回答" : "准备中"}
           </p>
         )}
       </div>
-    </Card>
+    </li>
   );
 }
 
-function TurnCard({ turn }: { turn: Turn }) {
+function Node({ tone }: { tone: "done" | "pending" | "live" }) {
+  const bg =
+    tone === "live" ? "var(--color-accent)" : tone === "done" ? "var(--color-line-2)" : "var(--color-bg)";
   return (
-    <Card as="article">
-      <CardHeader
-        title={`第 ${turn.turn_index + 1} 轮`}
-        right={
-          <span className="flex items-center gap-2">
-            <Badge>{turn.difficulty}</Badge>
-            <span className="text-[11px] text-[var(--color-ink-3)]">{turn.topic}</span>
-          </span>
+    <span
+      aria-hidden
+      className="absolute left-[9px] top-[5px] size-[13px] rounded-full border-[4px] border-bg"
+      style={{ background: bg }}
+    />
+  );
+}
+
+/**
+ * 一段发言。
+ *
+ * 说话人是一个普通词，不是一个等宽的「问」字色块——11px 的方块字在
+ * 正文旁边读起来像补丁。而且靠缩进和左边线区分正反对，比给每段套框更安静。
+ */
+function Speech({
+  who,
+  tone,
+  children,
+}: {
+  who: string;
+  tone: "ask" | "answer";
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={tone === "answer" ? "border-l-2 border-k-tool/45 pl-5" : ""}>
+      <span
+        className={
+          "mr-2.5 text-[12.5px] font-medium " + (tone === "answer" ? "text-k-tool" : "text-ink-3")
         }
-      />
-      <div className="space-y-4 p-5">
-        <p className="text-[15px] leading-[1.7] text-pretty">
-          <span className="mono mr-2 text-[11px] font-semibold text-[var(--color-k-llm)]">问</span>
-          {turn.question}
-        </p>
-        {turn.answer ? (
-          <p className="text-[15px] leading-[1.7] text-pretty">
-            <span className="mono mr-2 text-[11px] font-semibold text-[var(--color-k-tool)]">答</span>
-            {turn.answer}
-          </p>
-        ) : (
-          <p className="text-sm text-[var(--color-ink-3)]">等待回答…</p>
-        )}
-
-        {turn.evaluation && <EvaluationPanel evaluation={turn.evaluation} />}
-      </div>
-    </Card>
-  );
-}
-
-/** 评估面板。已完成的历史轮和流式中的当前轮共用，保证两处显示一致。 */
-function EvaluationPanel({ evaluation }: { evaluation: TurnEvaluation }) {
-  return (
-    <div className="rounded-[var(--radius-md)] border border-[var(--color-line)] bg-[var(--color-bg-3)]/60 p-4">
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-        <Badge tone="accent">评估</Badge>
-        <ScoreBar label="技术深度" value={evaluation.technical_depth} />
-        <ScoreBar label="表达" value={evaluation.clarity} />
-        <ScoreBar label="有据" value={evaluation.evidence} />
-        <ScoreBar label="切题" value={evaluation.relevance} />
-      </div>
-      <p className="muted mt-3 text-[13px]">{evaluation.summary}</p>
-      <p className="mt-2 border-l-2 border-[var(--color-k-custom)]/40 pl-3 text-[13px] leading-relaxed text-[var(--color-ink-2)]">
-        下一步{ACTION_LABELS[evaluation.next_action] ?? evaluation.next_action} ——{" "}
-        {evaluation.follow_up_reason}
-      </p>
+      >
+        {who}
+      </span>
+      <p className="prose inline text-ink">{children}</p>
     </div>
   );
 }
+
+/* ---------- 评估 ---------- */
 
 const ACTION_LABELS: Record<string, string> = {
   follow_up: "追问",
@@ -509,29 +667,73 @@ const ACTION_LABELS: Record<string, string> = {
   increase_difficulty: "加难度",
 };
 
-function TopicRow({ index, topic, active }: { index: number; topic: PlanTopic; active: boolean }) {
+const DIMS: [keyof TurnEvaluation, string][] = [
+  ["technical_depth", "深度"],
+  ["clarity", "表达"],
+  ["evidence", "有据"],
+  ["relevance", "切题"],
+];
+
+/**
+ * 评估面板。历史轮和流式中的当前轮共用，保证两处显示一致。
+ *
+ * 左边那个大号均分是整个界面对「机器的判断」唯一的强调——金色留给它，
+ * 剩下的四维用安静的量表带过。均分就是四维的算术平均，不做任何加权。
+ */
+function EvaluationPanel({ evaluation, delay = 90 }: { evaluation: TurnEvaluation; delay?: number }) {
+  const scores = DIMS.map(([k]) => Number(evaluation[k]));
+  const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
+  const meanColor = mean >= 4 ? "var(--color-ok)" : mean >= 3 ? "var(--color-warn)" : "var(--color-bad)";
+
   return (
-    <li className="flex gap-3">
-      <span className="mono mt-[1px] w-4 shrink-0 text-[11px] text-[var(--color-ink-3)]">
-        {index + 1}
-      </span>
-      <div className={active ? "text-[var(--color-ink)]" : ""}>
-        <div className="flex items-center gap-2">
-          <span className="text-[13px] font-medium">{topic.topic}</span>
-          {active && <Badge tone="accent">进行中</Badge>}
-          <span className="text-[11px] text-[var(--color-ink-3)]">{topic.difficulty}</span>
+    <div className="panel-flat animate-rise p-5">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:gap-7">
+        <div className="shrink-0 sm:w-24 sm:border-r sm:border-line sm:pr-6">
+          <div className="num text-[38px] font-semibold leading-none" style={{ color: meanColor }}>
+            {mean.toFixed(1)}
+          </div>
+          <div className="mt-2 text-[12.5px] text-ink-3">四维均分</div>
         </div>
-        <p className="mt-1 text-[12px] leading-relaxed text-[var(--color-ink-3)]">{topic.why}</p>
+
+        <div className="grid flex-1 gap-2.5 sm:grid-cols-2 sm:gap-x-7">
+          {DIMS.map(([key, label], i) => (
+            <ScoreMeter
+              key={key}
+              label={label}
+              value={Number(evaluation[key])}
+              delay={delay + i * 60}
+            />
+          ))}
+        </div>
       </div>
-    </li>
+
+      <p className="mt-5 text-[14px] leading-[1.7] text-ink-2">{evaluation.summary}</p>
+
+      <div className="mt-4 flex gap-3 border-t border-line pt-4">
+        <Badge tone="custom" className="h-fit shrink-0">
+          下一步{ACTION_LABELS[evaluation.next_action] ?? evaluation.next_action}
+        </Badge>
+        <p className="text-[13.5px] leading-[1.65] text-ink-3">{evaluation.follow_up_reason}</p>
+      </div>
+    </div>
   );
 }
 
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
+/* ---------- 小件 ---------- */
+
+function Field({
+  label,
+  children,
+  className = "",
+}: {
+  label?: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
   return (
-    <div>
-      <dt className="label">{label}</dt>
-      <dd className="mt-1 text-[13px] leading-relaxed text-[var(--color-ink-2)]">{children}</dd>
+    <div className={className}>
+      {label && <div className="label mb-1.5">{label}</div>}
+      {children}
     </div>
   );
 }

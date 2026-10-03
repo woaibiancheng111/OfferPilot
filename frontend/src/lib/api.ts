@@ -6,8 +6,16 @@ import type {
   TraceList,
 } from "./types";
 
+/**
+ * 用 localhost 而不是 127.0.0.1。
+ *
+ * 页面在 http://localhost:3000，API 写成 127.0.0.1 会让浏览器认为这是
+ * 跨地址空间请求，触发 Private Network Access 预检；后端没回
+ * Access-Control-Allow-Private-Network，预检 400，fetch 就一直挂着。
+ * 两边都用 localhost 属于同一地址空间，不会触发这层检查。
+ */
 export const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://127.0.0.1:18088";
+  process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:18088";
 
 export class ApiError extends Error {
   constructor(

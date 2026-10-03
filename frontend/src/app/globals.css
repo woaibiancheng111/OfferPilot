@@ -1,59 +1,114 @@
 @import "tailwindcss";
 
 /*
- * 暖白纸感。底色不是纯白，是带一点黄的纸色；文字是暖调墨色而不是纯黑，
- * 整页只有一种灰（暖），阴影也带暖色相——冷底配黑阴影是最常见的廉价感来源。
- * span 四色统一成"同等视觉重量的深色"，在浅底上必须比深色版更深才压得住。
+ * 冷调浅纸 + 单一金色。
+ *
+ * 底色是带一点蓝的浅灰，不是米白也不是纯白：米白加暖阴影是生成式界面
+ * 最常见的组合，纯白则让卡片无处可退，层次全压在边框上。这一档冷灰
+ * 介于两者之间，暖度足够低，不会和金色撞，色相也和墨色文字同族。
+ *
+ * 金色只出现在两个地方：机器给出的判断，以及主操作。界面其余保持安静。
  */
 @theme {
-  --color-bg: #faf8f5;
-  --color-bg-2: #ffffff;
-  --color-bg-3: #f2eee7;
-  --color-line: #e7e1d7;
-  --color-line-2: #d8d1c4;
-  --color-track: #ede8e0;
+  --color-bg: #f0f2f4;
+  --color-surface: #ffffff;
+  --color-surface-2: #f6f7f9;
+  --color-surface-3: #e9ecef;
+  --color-line: #e0e3e8;
+  --color-line-2: #c9cfd7;
 
-  --color-ink: #1c1917;
-  --color-ink-2: #57534e;
-  --color-ink-3: #8a8279;
+  --color-ink: #141a21;
+  --color-ink-2: #4a5563;
+  --color-ink-3: #78828f;
 
-  /* 唯一的强调色：沉稳的靛蓝，不用高饱和的荧光色 */
-  --color-accent: #2f6f9f;
-  --color-accent-dim: #e6eff6;
+  /* 浅底上金色要压深才够对比：文字、链接、焦点环用 accent，
+     实心按钮用更亮的 accent-solid 配深色字 */
+  --color-accent: #a2700b;
+  --color-accent-solid: #e0a83c;
+  --color-accent-ink: #1a1408;
+  --color-accent-dim: #fbf2de;
 
-  /* span 类型：四种深色，视觉权重一致，互相可辨 */
-  --color-k-agent: #6d5fc4;
-  --color-k-llm: #2f6f9f;
-  --color-k-tool: #3f8a63;
-  --color-k-custom: #a67c2e;
+  /* span 类型：色相铺开、感知亮度接近。同一套色在明暗两种底上都能站住 */
+  --color-k-custom: #94a3b4;
+  --color-k-agent: #9b8cf5;
+  --color-k-llm: #6baee0;
+  --color-k-tool: #5cc7a6;
+  --color-k-retrieval: #ee93a6;
 
-  --color-ok: #3f8a63;
-  --color-warn: #a67c2e;
-  --color-bad: #b4483e;
+  --color-ok: #1e8c6a;
+  --color-warn: #a2700b;
+  --color-bad: #c0392b;
 
-  --radius-sm: 0.375rem;
-  --radius-md: 0.625rem;
-  --radius-lg: 0.875rem;
+  /* 内层紧、外层松。一套圆角值用到底会让所有元素看起来一样重 */
+  --radius-xs: 3px;
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
 
-  --font-sans: var(--font-geist), "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+  --font-sans: var(--font-instrument), "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, Menlo, Consolas, monospace;
 }
 
-html {
-  color-scheme: light;
-}
+@layer base {
+  html {
+    color-scheme: light;
+    /* 锚点跳转不要瞬移 */
+    scroll-behavior: smooth;
+  }
 
-body {
-  background: var(--color-bg);
-  color: var(--color-ink);
-  font-family: var(--font-sans);
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
+  body {
+    background: var(--color-bg);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-synthesis-weight: none;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* Instrument Sans 有宽度轴，标题收窄到 92 读起来像刻在面板上的字，
+     而不是又一个圆润的 SaaS 标题 */
+  h1,
+  h2,
+  h3 {
+    font-variation-settings: "wdth" 92;
+    letter-spacing: -0.015em;
+  }
+
+  ::selection {
+    background: #f6dfa8;
+    color: var(--color-ink);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-xs);
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: #c2c9d2 transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: #c2c9d2;
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  *::-webkit-scrollbar-thumb:hover {
+    background: #a8b1bc;
+    background-clip: content-box;
+  }
 }
 
 /*
- * 极轻的纸纹。纯色平面在浅底上同样显得"数字"，一点颗粒能读出纸的感觉。
- * pointer-events: none，不挡交互。
+ * 极轻的纸纹。浅底纯色平面看着像塑料，0.03 的噪点能读出纸的感觉。
+ * 固定定位 + 不吃事件，不参与布局。
  */
 body::before {
   content: "";
@@ -61,8 +116,8 @@ body::before {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.03;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 body > * {
@@ -70,43 +125,79 @@ body > * {
   z-index: 1;
 }
 
-/* 数据一律等宽 + 表格数字，纵向对齐才读得下去 */
-.mono {
-  font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
-  font-feature-settings: "zero" 1;
-}
+@layer components {
+  /*
+   * 面板。浅底上层次全靠阴影，所以阴影必须带上底色的蓝相，
+   * 纯黑低透明度的阴影是廉价感的主要来源。
+   */
+  .panel {
+    background: var(--color-surface);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.9),
+      0 1px 2px rgb(23 32 43 / 0.04),
+      0 14px 30px -20px rgb(23 32 43 / 0.22);
+  }
 
-/* 小标签：字距拉开、字重中等 */
-.label {
-  font-size: 0.6875rem;
-  font-weight: 500;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--color-ink-3);
-}
+  .panel-flat {
+    background: var(--color-surface-2);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-md);
+  }
 
-.muted {
-  color: var(--color-ink-2);
-  line-height: 1.6;
-  text-wrap: pretty;
-}
+  /* 正文排版。16.5/1.75 是这套界面的基本行距，比界面常用的小一号字大不少——
+     面试记录是要被读完的，不是被扫过的 */
+  .prose {
+    font-size: 1.03125rem;
+    line-height: 1.75;
+    text-wrap: pretty;
+  }
 
-/* 卡片：白底 + 暖调阴影。浅底上阴影比边框更能拉开层次 */
-.card {
-  background: var(--color-bg-2);
-  border: 1px solid var(--color-line);
-  border-radius: var(--radius-lg);
-  box-shadow:
-    0 1px 2px rgb(80 65 45 / 0.04),
-    0 10px 28px -14px rgb(80 65 45 / 0.14);
-}
+  .prose-sm {
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    text-wrap: pretty;
+  }
 
-.skeleton {
-  background: linear-gradient(90deg, #f2eee7 25%, #e6e0d5 50%, #f2eee7 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.6s ease-in-out infinite;
-  border-radius: var(--radius-sm);
+  /* 标签。句首大写、字距放开、颜色压暗——这三点让 12px 的辅助文字
+     也能读，而不像一堆装饰 */
+  .label {
+    font-size: 0.78125rem;
+    font-weight: 500;
+    letter-spacing: 0.005em;
+    color: var(--color-ink-3);
+  }
+
+  /* 数据。等宽 + 表格数字：纵向才能对齐 */
+  .mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 大数字用无衬线 + 表格数字，比等宽更少噪点 */
+  .num {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.02em;
+  }
+
+  /* 代码与 JSON 表面 */
+  .code {
+    background: #f3f5f7;
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: 0.78125rem;
+    line-height: 1.65;
+    color: var(--color-ink-2);
+  }
+
+  .skeleton {
+    background: linear-gradient(90deg, #e9ecef 25%, #f1f3f5 50%, #e9ecef 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.7s ease-in-out infinite;
+    border-radius: var(--radius-sm);
+  }
 }
 
 @keyframes shimmer {
@@ -118,33 +209,33 @@ body > * {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .skeleton {
-    animation: none;
+/* 入场。只在挂载时走一次，用 transform/opacity，不触发重排 */
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0);
+  }
+  to {
+    opacity: 1;
+    transform: none;
   }
 }
 
-::selection {
-  background: #cfe2f0;
-  color: var(--color-ink);
+.animate-rise {
+  animation: rise 0.42s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
-/* 滚动条：浅底上默认那条深灰太扎眼 */
-* {
-  scrollbar-width: thin;
-  scrollbar-color: #d2cabd transparent;
-}
-*::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
-}
-*::-webkit-scrollbar-thumb {
-  background: #d2cabd;
-  border-radius: 999px;
-  border: 3px solid transparent;
-  background-clip: content-box;
-}
-*::-webkit-scrollbar-thumb:hover {
-  background: #bcb3a3;
-  background-clip: content-box;
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .skeleton,
+  .animate-rise {
+    animation: none;
+  }
+  *,
+  *::before,
+  *::after {
+    transition-duration: 0.01ms !important;
+  }
 }

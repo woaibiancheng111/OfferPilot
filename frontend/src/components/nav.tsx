@@ -11,7 +11,7 @@ const NAV = [
 export function NavLinks() {
   const pathname = usePathname();
   return (
-    <nav className="flex items-center gap-1">
+    <nav className="flex h-full items-stretch gap-1" aria-label="主导航">
       {NAV.map((item) => {
         // /traces 下的详情页也应该高亮 Trace
         const active = item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
@@ -21,14 +21,17 @@ export function NavLinks() {
             href={item.href}
             aria-current={active ? "page" : undefined}
             className={
-              "rounded-[var(--radius-sm)] px-3 py-1.5 text-sm transition-colors duration-150 " +
-              "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-accent)] " +
-              (active
-                ? "bg-[var(--color-bg-3)] text-[var(--color-ink)]"
-                : "text-[var(--color-ink-3)] hover:bg-[var(--color-bg-3)]/60 hover:text-[var(--color-ink-2)]")
+              "relative flex items-center px-3 text-[14px] transition-colors duration-200 " +
+              (active ? "text-ink" : "text-ink-3 hover:text-ink-2")
             }
           >
             {item.label}
+            {active && (
+              <span
+                aria-hidden
+                className="absolute inset-x-2 -bottom-px h-[2px] rounded-full bg-accent"
+              />
+            )}
           </Link>
         );
       })}
