@@ -1,0 +1,130 @@
+# 生产编排：后端 + 前端 + Nginx + Postgres + Redis
+#
+# 和根目录的 docker-compose.yml 分开：那份是本地开发用的，只起 pg 和 redis，
+# 且把它们映射到 55432 / 56379 方便本机连。生产这份不映射数据库端口到宿主机
+# （方案 §9.3：数据库不暴露公网），应用之间走 compose 内网。
+#
+# 用法见 README「部署」一节。首次上线要先签证书，顺序不能反：
+#   1) 把 deploy/.env.production.example 复制成 .env.production 并填好
+#   2) nginx 还没证书，起不来，所以先单独跑一次 certbot --standalone
+#   3) 再 docker compose up -d
+
+# 独立的项目名。默认会用目录名（offerpilot），那会和本地开发的
+# docker-compose.yml 撞成同一个项目——容器名冲突不说，两个文件里都叫
+# pgdata 的卷会解析成同一个 offerpilot_pgdata，本地测试数据会被生产库覆盖。
+name: offerpilot-prod
+
+x-restart: &restart
+  restart: unless-stopped
+
+services:
+  postgres:
+    <<: *restart
+    image: pgvector/pgvector:pg16
+    # 密码从 env_file 注入。注意 env_file 只作用于容器内部，
+    # 不参与 ${} 插值——所以这里不能写 ${POSTGRES_PASSWORD}，
+    # 那样的话只有 shell 里有这个变量才过得去，部署文档得另外交代，很容易踩。
+    env_file:
+      - path: ./deploy/.env.production
+        required: true
+    environment:
+      # 用户名和库名固定，不用每次部署改
+      POSTGRES_USER: offerpilot
+      POSTGRES_DB: offerpilot
+    volumes:
+      - pgdata_prod:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U offerpilot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # 不写 ports：数据库只在 compose 内网可达
+
+  redis:
+    <<: *restart
+    image: redis:7-alpine
+    # 目前应用还没连 Redis：SSE 续传缓冲是进程内存，异步任务（复盘 Agent）
+    # 也还没上。先把服务占住，等接 ARQ 时不用再动编排
+    command: ["redis-server", "--save", "900", "1", "--loglevel", "warning"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    <<: *restart
+    build:
+      context: ./backend
+    depends_on:
+      postgres:
+        condition: service_healthy
+    env_file:
+      - path: ./deploy/.env.production
+        required: true
+    expose:
+      - "18088"
+    # 迁移在 entrypoint 里跑，所以这个检查要等迁移完才会通
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0) if urllib.request.urlopen('http://127.0.0.1:18088/health',timeout=3).status==200 else sys.exit(1)"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  frontend:
+    <<: *restart
+    build:
+      context: ./frontend
+      args:
+        # 留空 = 走同源相对路径，由 nginx 把 /api 转到后端
+        NEXT_PUBLIC_API_BASE: ""
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  nginx:
+    <<: *restart
+    image: nginx:1.27-alpine
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/nginx/offerpilot.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./deploy/nginx/snippets:/etc/nginx/snippets:ro
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    # 证书和 nginx.conf 都是挂进来的，配置写错时这个容器会反复重启。
+    # 改完先在服务器上跑 docker compose run --rm nginx nginx -t 再重启
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  certbot:
+    image: certbot/certbot:latest
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    # 每天两次检查续期，Let's Encrypt 证书有效期 90 天
+    entrypoint: >
+      /bin/sh -c "trap exit TERM;
+      while :; do certbot renew --webroot -w /var/www/certbot --quiet;
+      sleep 12h & wait $${!}; done"
+
+volumes:
+  # 名字带 _prod 后缀，和本地开发那个 pgdata 彻底分开
+  pgdata_prod:
+  certbot_conf:
+  certbot_www:

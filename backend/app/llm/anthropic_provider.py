@@ -94,9 +94,7 @@ class AnthropicLLM:
         )
         record_llm_usage(
             model=stream.model,
-            input_tokens=usage.input_tokens
-            + usage.cache_read_tokens
-            + usage.cache_write_tokens,
+            input_tokens=usage.input_tokens + usage.cache_read_tokens + usage.cache_write_tokens,
             output_tokens=usage.output_tokens,
             prompt_version=prompt_version,
         )

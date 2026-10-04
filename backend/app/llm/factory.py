@@ -38,9 +38,7 @@ def build_llm_client(settings: Settings) -> LLMClient:
     elif vendor == "openai":
         client = _build_openai(settings)
     else:
-        raise LLMNotConfiguredError(
-            f"未知的 LLM_VENDOR：{vendor!r}。可选值：{', '.join(VENDORS)}"
-        )
+        raise LLMNotConfiguredError(f"未知的 LLM_VENDOR：{vendor!r}。可选值：{', '.join(VENDORS)}")
 
     logger.info("模型：%s / %s", vendor, settings.llm_model)
     return client
@@ -70,9 +68,7 @@ def _build_openai(settings: Settings) -> OpenAILLM:
     if not settings.openai_api_key:
         # OpenAI SDK 在构造时就会因为缺 key 抛一个很难懂的异常，这里提前给清楚的说法
         raise LLMNotConfiguredError("LLM_VENDOR=openai 时必须配置 OPENAI_API_KEY")
-    client = openai.AsyncOpenAI(
-        api_key=settings.openai_api_key, base_url=settings.openai_base_url
-    )
+    client = openai.AsyncOpenAI(api_key=settings.openai_api_key, base_url=settings.openai_base_url)
     return OpenAILLM(
         model=settings.llm_model,
         max_tokens=settings.llm_max_tokens,

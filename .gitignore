@@ -8,3 +8,6 @@ node_modules/
 .next/
 *.log
 .env*.local
+
+# 生产密钥，只有 .example 进版本库
+deploy/.env.production

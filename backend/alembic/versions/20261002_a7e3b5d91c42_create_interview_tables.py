@@ -9,8 +9,9 @@ Create Date: 2026-10-02
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 revision: str = "a7e3b5d91c42"
 down_revision: str | None = "c4f1a9b2e7d3"
@@ -54,9 +55,7 @@ def upgrade() -> None:
         sa.ForeignKeyConstraint(["session_id"], ["interview_sessions.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
     )
-    op.create_index(
-        "ix_interview_turns_session", "interview_turns", ["session_id", "turn_index"]
-    )
+    op.create_index("ix_interview_turns_session", "interview_turns", ["session_id", "turn_index"])
     op.create_index("ix_interview_turns_topic", "interview_turns", ["topic"])
 
 

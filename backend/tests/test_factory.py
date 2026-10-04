@@ -34,8 +34,13 @@ def test_switching_vendor_and_model_only_needs_env():
 
 def test_legacy_max_tokens_flows_from_env():
     llm = build_llm_client(
-        Settings(_env_file=None, llm_vendor="openai", llm_model="gpt-4o",
-                 openai_api_key="sk-test", openai_legacy_max_tokens=True)
+        Settings(
+            _env_file=None,
+            llm_vendor="openai",
+            llm_model="gpt-4o",
+            openai_api_key="sk-test",
+            openai_legacy_max_tokens=True,
+        )
     )
     assert llm.legacy_max_tokens is True
 

@@ -60,9 +60,7 @@ class InterviewError(RuntimeError):
     """面试官没给出可用的提问。"""
 
 
-def _format_previous(
-    question: str, answer: str, evaluation: TurnEvaluation | None
-) -> str:
+def _format_previous(question: str, answer: str, evaluation: TurnEvaluation | None) -> str:
     if evaluation is None:
         return ""
     return LAST_TURN_TEMPLATE.format(

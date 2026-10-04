@@ -149,9 +149,7 @@ class OpenAILLM:
         params: dict[str, Any] = {
             "model": self.model,
             "messages": _to_openai_messages(messages, system),
-            (
-                "max_tokens" if self.legacy_max_tokens else "max_completion_tokens"
-            ): self.max_tokens,
+            ("max_tokens" if self.legacy_max_tokens else "max_completion_tokens"): self.max_tokens,
         }
         if tools:
             params["tools"] = [_to_openai_tool(t) for t in tools]

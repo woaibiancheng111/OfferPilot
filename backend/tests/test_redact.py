@@ -146,7 +146,10 @@ async def test_prompt_version_changes_when_prompt_changes(flush):
         llm = ScriptedLLM([reply(text="ok")])
         async with tracer.trace("session"):
             await run_agent(
-                llm, [UserMessage("q")], system=system, name="interviewer",
+                llm,
+                [UserMessage("q")],
+                system=system,
+                name="interviewer",
                 config=AgentConfig(),
             )
         versions.append(version_of(system))

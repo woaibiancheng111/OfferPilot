@@ -103,9 +103,7 @@ async def evaluate_turn(
         total_usage.input_tokens += result.usage.input_tokens
         total_usage.output_tokens += result.usage.output_tokens
         if captured:
-            return EvaluationResult(
-                evaluation=captured[0], attempts=attempt, usage=total_usage
-            )
+            return EvaluationResult(evaluation=captured[0], attempts=attempt, usage=total_usage)
         if attempt < config.max_attempts:
             messages = [
                 *result.messages,

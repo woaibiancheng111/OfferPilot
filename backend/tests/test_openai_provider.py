@@ -1,4 +1,4 @@
-﻿from types import SimpleNamespace
+from types import SimpleNamespace
 
 import pytest
 
@@ -107,9 +107,7 @@ async def test_prompt_cache_key_derived_from_system(trace_sink):
 
 async def test_legacy_max_tokens_for_third_party_gateways(trace_sink):
     client, completions = fake_client(fake_completion())
-    llm = OpenAILLM(
-        model="gpt-5", client=client, enable_prompt_cache=False, legacy_max_tokens=True
-    )
+    llm = OpenAILLM(model="gpt-5", client=client, enable_prompt_cache=False, legacy_max_tokens=True)
 
     await llm.chat([UserMessage("q")], system="s")
     assert completions.params["max_tokens"] == 16000
@@ -180,9 +178,7 @@ async def test_parses_tool_calls_and_does_not_double_count_cache(flush):
 
 
 async def test_broken_tool_arguments_json_does_not_crash(trace_sink):
-    client, _ = fake_client(
-        fake_completion(tool_calls=[fake_tool_call("t1", "add", "{不是 JSON")])
-    )
+    client, _ = fake_client(fake_completion(tool_calls=[fake_tool_call("t1", "add", "{不是 JSON")]))
     llm = OpenAILLM(model="gpt-5", client=client, enable_prompt_cache=False)
 
     result = await llm.chat([UserMessage("1+2")])

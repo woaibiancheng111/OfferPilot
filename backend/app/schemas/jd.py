@@ -24,12 +24,8 @@ class JDAnalysis(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
-    company: str | None = Field(
-        default=None, description="公司名称。JD 未提及则为 null"
-    )
-    role_title: str | None = Field(
-        default=None, description="岗位名称。JD 未提及则为 null"
-    )
+    company: str | None = Field(default=None, description="公司名称。JD 未提及则为 null")
+    role_title: str | None = Field(default=None, description="岗位名称。JD 未提及则为 null")
     seniority: Seniority = Field(
         default="未知", description="职级，结合年限、深度要求、职责范围综合判断"
     )
@@ -45,9 +41,7 @@ class JDAnalysis(BaseModel):
     skills_nice_to_have: list[str] = Field(
         default_factory=list, description="加分项，JD 中以'优先''加分'等措辞出现"
     )
-    responsibilities: list[str] = Field(
-        default_factory=list, description="主要职责，每条一句话"
-    )
+    responsibilities: list[str] = Field(default_factory=list, description="主要职责，每条一句话")
     keywords: list[str] = Field(
         default_factory=list,
         description="用于后续简历匹配和面试出题的技术关键词，3-8 个",

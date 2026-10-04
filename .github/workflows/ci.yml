@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一个分支只留最新一次运行，避免连续推送时排队等一串过期结果
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: 后端 · pytest + ruff
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          # 和 backend/Dockerfile 里钉的版本保持一致，免得本地和 CI 用不同 uv
+          # 解析同一个 uv.lock
+          version: "0.10.8"
+          # pyproject 要求 >=3.12,<3.13。显式钉住，不依赖 runner 恰好预装了哪个版本
+          python-version: "3.12"
+
+      - name: 装依赖
+        run: uv sync --frozen
+
+      # ruff 先跑：它只要几秒，风格问题没必要等测试跑完两分钟才报
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format
+        run: uv run ruff format --check .
+
+      # 不需要 API key，也不需要数据库：用假 LLM + SQLite
+      - name: pytest
+        run: uv run pytest -q
+
+  frontend:
+    name: 前端 · next build
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      # packageManager 字段在 frontend/package.json 里，而这个输入默认相对
+      # 仓库根目录找 package.json。不指定就读不到版本号，会去装最新的 pnpm，
+      # 和项目实际钉的 10.28.2 对不上
+      - uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: 装依赖
+        run: pnpm install --frozen-lockfile
+
+      # build 里会跑 tsc，类型错误会在这里挂掉
+      - name: next build
+        run: pnpm build

@@ -2,7 +2,7 @@
 
 求职 Agent + 自研观测评测平台。完整方案见 [`docs/OfferPilot项目方案.md`](docs/OfferPilot项目方案.md)（v2，含修订记录）。
 
-当前进度：**第 2 周完成**。已完成手写 agent loop、双厂商模型抽象层、Trace SDK、落库前脱敏、prompt 内容 hash 版本号、JD 解析 Agent、多 Agent 模拟面试（规划/提问/评估）、Trace 查询 API 和数据库迁移，116 个测试全绿。
+当前进度：**第 3 周进行中**。已完成手写 agent loop、双厂商模型抽象层、Trace SDK、落库前脱敏、prompt 内容 hash 版本号、JD 解析 Agent、多 Agent 模拟面试（规划/提问/评估）、SSE 流式输出（含断线续传）、Next.js 面试工作台与 Trace 看板、130 个测试全绿、CI 与生产部署编排。
 
 ## 快速开始
 
@@ -92,8 +92,11 @@ curl localhost:18088/api/traces/<trace_id>
 offerpilot/
 ├── backend/          # FastAPI：Agent、Trace SDK、评测引擎
 ├── frontend/         # Next.js：面试工作台 + Trace 看板
+├── deploy/           # 生产部署：nginx 配置 + 环境变量模板
 ├── docs/             # 项目方案 v2
-├── docker-compose.yml
+├── docker-compose.yml         # 本地开发：只起 pg 和 redis
+├── docker-compose.prod.yml    # 生产：五个服务全套
+├── .github/workflows/ci.yml
 └── README.md
 ```
 
@@ -209,15 +212,78 @@ backend/
 - 没有手写版本号这个选项，也就没有"改了 prompt 忘了改版本号"导致前后对比悄悄失效的问题
 - agent span 和它下面的 llm span 都带版本号，回归时能按版本分组
 
-## 下一步（第 3 周）
+## 部署
+
+服务器已 ICP 备案，域名就位，上线没有等待期。整套编排是 `docker-compose.prod.yml`：
+后端、前端、Nginx、Postgres、Redis 五个服务，应用之间走 compose 内网，
+数据库不映射到宿主机端口。
+
+```bash
+# 1. 填生产环境变量
+cp deploy/.env.production.example deploy/.env.production
+#   至少要改 POSTGRES_PASSWORD、LLM_VENDOR、LLM_MODEL 和 API key
+
+# 2. 先在 nginx.conf 里把 offerpilot.example.com 换成真实域名（共 3 处）
+
+# 3. 签证书。nginx 此刻还没证书，起不来，所以先单独跑 certbot：
+docker compose -f docker-compose.prod.yml run --rm --entrypoint "" \
+  certbot certonly --standalone -d <你的域名> --agree-tos -m <你的邮箱>
+
+# 4. 起全套
+docker compose -f docker-compose.prod.yml up -d --build
+
+# 5. 看日志
+docker compose -f docker-compose.prod.yml logs -f backend
+```
+
+数据库迁移由 `backend/docker/entrypoint.sh` 在启动时执行（`alembic upgrade head`），
+不用手动跑。alembic 记版本，重复执行是幂等的。
+
+### Nginx 上最容易踩的坑
+
+`deploy/nginx/offerpilot.conf` 里 `/api/` 那段的 `proxy_buffering off` 是
+**流式能不能用的分水岭**。开着缓冲的话，SSE 会被攒成一次性返回——前端
+逐字上屏的效果完全看不出来，看上去就是"没做流式"。同一段里还有三处配套：
+`gzip off`（压缩会把事件攒在缓冲区里等凑够）、`proxy_read_timeout 3600s`
+（默认 60s 会把还在评估的一轮掐断）、`Connection ""`（置空而非 close，
+不干扰上游 keepalive）。
+
+改完配置先验证再重启：
+
+```bash
+docker compose -f docker-compose.prod.yml run --rm nginx nginx -t
+```
+
+> ⚠️ 配置文件要存成 **UTF-8 无 BOM**。nginx 读到 BOM 会报
+> `unknown directive "﻿#"`，而且报错信息里的那个字符很难肉眼分辨。
+> 从 Windows 编辑器另存的配置文件最容易带上 BOM。
+
+## CI
+
+`.github/workflows/ci.yml`：push 到 main 和所有 PR 都会跑两个 job——
+后端 `ruff check` + `ruff format --check` + `pytest`，前端 `next build`
+（里面会跑 tsc，类型错误会在这里挂掉）。都不需要 API key，也不需要数据库：
+测试用假 LLM + SQLite。
+
+ruff 先于 pytest 执行，因为它只要几秒，风格问题没必要等测试跑完两分钟才报。
+
+## 下一步
+
+**第 3 周**
 
 - [x] JD 解析 Agent（结构化输出 + 校验失败自动重试）
 - [x] 多 Agent 模拟面试（规划 / 面试官 / 评估 + 编排）
+- [x] SSE 流式输出（带事件 id 断线续传）
+- [x] 前端 Trace 可视化（树形 + 瀑布图）
+- [x] CI：GitHub Actions 跑 pytest + ruff
+- [x] 部署编排：Dockerfile ×2 + Nginx + docker-compose.prod.yml
+- [ ] 服务器上首次签发证书并上线，验证 SSE 穿透 Nginx
 - [ ] 复盘 Agent（异步任务，生成报告 + 更新用户画像）
-- [ ] SSE 流式输出（带事件 id 断线续传）
-- [ ] 前端 Trace 可视化（树形 + 瀑布图）
-- [ ] 部署到已备案的腾讯云服务器 + Nginx
-- [ ] CI：GitHub Actions 跑 pytest + ruff
+
+**第 4 周起**：真实用户试用 → 从线上 trace 沉淀 30 条评测集（按时间切
+tune/holdout）→ judge 校准 + 双人标注 kappa + 配对检验。评测引擎目前
+一行代码都还没有，是差异化最重的一块。详见
+[`docs/OfferPilot项目方案.md`](docs/OfferPilot项目方案.md) §11。
 
 > ✅ 代码已提交并推送到 GitHub：`woaibiancheng111/OfferPilot`（public）
 > 部署用已备案的腾讯云服务器，第 3 周直接上，无等待期。

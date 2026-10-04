@@ -31,9 +31,7 @@ router = APIRouter(prefix="/api/interview", tags=["interview"])
 
 
 class StartRequest(BaseModel):
-    jd: JDInput = Field(
-        description="已经解析好的 JD。可以直接把 /api/jd/parse 的响应原样传回来"
-    )
+    jd: JDInput = Field(description="已经解析好的 JD。可以直接把 /api/jd/parse 的响应原样传回来")
     user_id: str = Field(min_length=1, max_length=64)
     resume_text: str | None = Field(
         default=None, max_length=20000, description="简历原文，可选；只进 prompt，不落库"
